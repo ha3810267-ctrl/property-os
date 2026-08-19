@@ -9,11 +9,14 @@ from backend.models.user import User
 from backend.models.property import Property
 from backend.models.tenant import Tenant
 from backend.models.maintenance_request import MaintenanceRequest
+from backend.routes.organisations import organisations_bp
+from backend.models.task_assignment import TaskAssignment
 load_dotenv()
 app=flask.Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 db.init_app(app)
 migrate = Migrate(app, db)
+app.register_blueprint(organisations_bp)
 
 @app.route("/")
 def home():
