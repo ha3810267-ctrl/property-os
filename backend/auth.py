@@ -1,4 +1,4 @@
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import get_jwt_identity
 from backend.database import db
 from backend.models.user import User
 from sqlalchemy import select
