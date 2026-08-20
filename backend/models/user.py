@@ -16,6 +16,11 @@ class User(db.Model):
         unique=True
     )
 
+    password_hash = db.Column(
+    db.String(255),
+    nullable=False
+)
+
     role = db.Column(
         db.String(50),
         nullable=False
