@@ -11,6 +11,7 @@ from backend.models.tenant import Tenant
 from backend.models.maintenance_request import MaintenanceRequest
 from backend.routes.organisations import organisations_bp
 from backend.routes.users import users_bp
+from backend.routes.auth import auth_bp
 load_dotenv()
 app=flask.Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
@@ -18,6 +19,7 @@ db.init_app(app)
 migrate = Migrate(app, db)
 app.register_blueprint(organisations_bp)
 app.register_blueprint(users_bp)
+app.register_blueprint(auth_bp)
 @app.route("/")
 def home():
     return os.getenv("APP_NAME")
