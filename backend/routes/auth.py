@@ -3,7 +3,7 @@ from sqlalchemy import select
 from backend.database import db
 from backend.models.user import User
 from werkzeug.security import check_password_hash
-
+from flask_jwt_extended import create_access_token
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -33,8 +33,9 @@ def login():
 
     if not check_password_hash(user.password_hash, password):
         return {"error": "Invalid email or password"}, 401
-
+    access_token = create_access_token(identity=str(user.id))
     return {
+        "access_token": access_token,
         "id": user.id,
         "name": user.name,
         "email": user.email,
