@@ -3,7 +3,10 @@ from backend.database import db
 
 class User(db.Model):
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
 
     name = db.Column(
         db.String(100),
@@ -17,9 +20,19 @@ class User(db.Model):
     )
 
     password_hash = db.Column(
-    db.String(255),
-    nullable=False
-)
+        db.String(255),
+        nullable=False
+    )
+
+    password_reset_token_hash = db.Column(
+        db.String(255),
+        nullable=True
+    )
+
+    password_reset_expires_at = db.Column(
+        db.DateTime,
+        nullable=True
+    )
 
     role = db.Column(
         db.String(50),

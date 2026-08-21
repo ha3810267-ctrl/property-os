@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from backend.utils.audit import create_audit_log
 from backend.database import db
 from backend.auth import get_current_user
 from backend.models.maintenance_request import MaintenanceRequest
@@ -123,6 +124,15 @@ def create_maintenance_request():
     db.session.add(maintenance_request)
 
     try:
+        db.session.flush()
+
+        create_audit_log(
+            user=user,
+            action="maintenance_request_created",
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
         db.session.commit()
 
     except IntegrityError:
@@ -332,6 +342,15 @@ def update_maintenance_request(
         maintenance_request.category = category
 
     try:
+        db.session.flush()
+
+        create_audit_log(
+            user=user,
+            action="maintenance_request_updated",
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
         db.session.commit()
 
     except IntegrityError:

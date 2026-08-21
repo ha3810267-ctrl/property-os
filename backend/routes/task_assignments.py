@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from backend.utils.audit import create_audit_log
 from backend.database import db
 from backend.auth import get_current_user
 from backend.models.maintenance_request import MaintenanceRequest
@@ -21,33 +22,51 @@ task_assignment_bp = Blueprint("task_assignment", __name__)
 )
 @jwt_required()
 def assign_task(maintenance_request_id):
+
     data = request.get_json()
 
     if not data:
-        return {"error": "Request body is required"}, 400
+        return {
+            "error": "Request body is required"
+        }, 400
 
     user_id = data.get("user_id")
 
     if user_id is None:
-        return {"error": "User ID is required"}, 400
+        return {
+            "error": "User ID is required"
+        }, 400
 
     if not isinstance(user_id, int) or isinstance(user_id, bool):
-        return {"error": "User ID must be a valid integer"}, 400
+        return {
+            "error": "User ID must be a valid integer"
+        }, 400
 
     current_user = get_current_user()
 
     if not current_user:
-        return {"error": "User not found"}, 404
+        return {
+            "error": "User not found"
+        }, 404
 
-    if current_user.role not in ["admin", "property_manager"]:
+    if current_user.role not in [
+        "admin",
+        "property_manager"
+    ]:
         return {
             "error": "You do not have permission to assign tasks"
         }, 403
 
     maintenance_request = db.session.execute(
         select(MaintenanceRequest)
-        .join(Tenant, MaintenanceRequest.tenant_id == Tenant.id)
-        .join(Property, Tenant.property_id == Property.id)
+        .join(
+            Tenant,
+            MaintenanceRequest.tenant_id == Tenant.id
+        )
+        .join(
+            Property,
+            Tenant.property_id == Property.id
+        )
         .where(
             MaintenanceRequest.id == maintenance_request_id,
             Property.organisation_id == current_user.organisation_id
@@ -93,16 +112,27 @@ def assign_task(maintenance_request_id):
     db.session.add(assignment)
 
     try:
+        db.session.flush()
+
+        create_audit_log(
+            user=current_user,
+            action="task_assigned",
+            resource_type="maintenance_request",
+            resource_id=maintenance_request_id
+        )
+
         db.session.commit()
 
     except IntegrityError:
         db.session.rollback()
+
         return {
             "error": "Task assignment could not be created because the provided information is invalid"
         }, 409
 
     except SQLAlchemyError:
         db.session.rollback()
+
         return {
             "error": "Task assignment could not be created"
         }, 500
