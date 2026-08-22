@@ -30,9 +30,9 @@ class User(db.Model):
     )
 
     password_reset_expires_at = db.Column(
-        db.DateTime,
-        nullable=True
-    )
+    db.DateTime(timezone=True),
+    nullable=True
+)
 
     role = db.Column(
         db.String(50),

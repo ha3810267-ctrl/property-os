@@ -2,6 +2,7 @@ from flask import Blueprint, request
 from backend.database import db
 from backend.models.user import User
 from backend.models.organisation import Organisation
+from backend.utils.password import validate_password
 from werkzeug.security import generate_password_hash
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -32,6 +33,11 @@ def create_user():
     if not password:
         return {"error": "Password is required"}, 400
 
+    password_error = validate_password(password)
+
+    if password_error:
+        return {"error": password_error}, 400
+
     if not role:
         return {"error": "Role is required"}, 400
 
@@ -59,9 +65,13 @@ def create_user():
 
     try:
         db.session.commit()
+
     except IntegrityError:
         db.session.rollback()
-        return {"error": "Email already exists"}, 409
+
+        return {
+            "error": "Email already exists"
+        }, 409
 
     return {
         "id": user.id,
