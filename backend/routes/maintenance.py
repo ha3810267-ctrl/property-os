@@ -3,6 +3,8 @@ from flask_jwt_extended import jwt_required
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from backend.services.ai_maintenance import analyse_maintenance_request
+from backend.services.task_assignment import assign_task_with_ai
 from backend.utils.audit import create_audit_log
 from backend.database import db
 from backend.auth import get_current_user
@@ -92,6 +94,14 @@ def create_maintenance_request():
 
     description = description.strip()
 
+    try:
+        ai_result = analyse_maintenance_request(description)
+
+    except ValueError as e:
+        return {
+            "error": str(e)
+        }, 422
+
     user = get_current_user()
 
     if not user:
@@ -118,7 +128,9 @@ def create_maintenance_request():
 
     maintenance_request = MaintenanceRequest(
         description=description,
-        tenant_id=tenant_id
+        tenant_id=tenant_id,
+        priority=ai_result["priority"],
+        category=ai_result["category"]
     )
 
     db.session.add(maintenance_request)
@@ -126,12 +138,24 @@ def create_maintenance_request():
     try:
         db.session.flush()
 
+        assignment = assign_task_with_ai(
+            maintenance_request.id
+        )
+
         create_audit_log(
             user=user,
             action="maintenance_request_created",
             resource_type="maintenance_request",
             resource_id=maintenance_request.id
         )
+
+        if assignment:
+            create_audit_log(
+                user=user,
+                action="maintenance_request_ai_assigned",
+                resource_type="maintenance_request",
+                resource_id=maintenance_request.id
+            )
 
         db.session.commit()
 

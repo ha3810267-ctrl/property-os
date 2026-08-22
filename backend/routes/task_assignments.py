@@ -16,6 +16,24 @@ from backend.models.user import User
 task_assignment_bp = Blueprint("task_assignment", __name__)
 
 
+def get_request_for_user(maintenance_request_id, organisation_id):
+    return db.session.execute(
+        select(MaintenanceRequest)
+        .join(
+            Tenant,
+            MaintenanceRequest.tenant_id == Tenant.id
+        )
+        .join(
+            Property,
+            Tenant.property_id == Property.id
+        )
+        .where(
+            MaintenanceRequest.id == maintenance_request_id,
+            Property.organisation_id == organisation_id
+        )
+    ).scalar_one_or_none()
+
+
 @task_assignment_bp.route(
     "/maintenance-requests/<int:maintenance_request_id>/assign",
     methods=["POST"]
@@ -23,11 +41,11 @@ task_assignment_bp = Blueprint("task_assignment", __name__)
 @jwt_required()
 def assign_task(maintenance_request_id):
 
-    data = request.get_json()
+    data = request.get_json(silent=True)
 
-    if not data:
+    if not isinstance(data, dict):
         return {
-            "error": "Request body is required"
+            "error": "Request body must be a valid JSON object"
         }, 400
 
     user_id = data.get("user_id")
@@ -49,29 +67,18 @@ def assign_task(maintenance_request_id):
             "error": "User not found"
         }, 404
 
-    if current_user.role not in [
+    if current_user.role not in {
         "admin",
         "property_manager"
-    ]:
+    }:
         return {
             "error": "You do not have permission to assign tasks"
         }, 403
 
-    maintenance_request = db.session.execute(
-        select(MaintenanceRequest)
-        .join(
-            Tenant,
-            MaintenanceRequest.tenant_id == Tenant.id
-        )
-        .join(
-            Property,
-            Tenant.property_id == Property.id
-        )
-        .where(
-            MaintenanceRequest.id == maintenance_request_id,
-            Property.organisation_id == current_user.organisation_id
-        )
-    ).scalar_one_or_none()
+    maintenance_request = get_request_for_user(
+        maintenance_request_id,
+        current_user.organisation_id
+    )
 
     if not maintenance_request:
         return {
@@ -93,14 +100,50 @@ def assign_task(maintenance_request_id):
 
     existing_assignment = db.session.execute(
         select(TaskAssignment).where(
-            TaskAssignment.maintenance_request_id == maintenance_request_id
+            TaskAssignment.maintenance_request_id
+            == maintenance_request_id
         )
     ).scalar_one_or_none()
 
     if existing_assignment:
+        existing_assignment.user_id = worker.id
+        existing_assignment.assignment_method = "manual"
+        existing_assignment.score = None
+
+        try:
+            db.session.flush()
+
+            create_audit_log(
+                user=current_user,
+                action="task_assignment_overridden",
+                resource_type="maintenance_request",
+                resource_id=maintenance_request_id
+            )
+
+            db.session.commit()
+
+        except IntegrityError:
+            db.session.rollback()
+
+            return {
+                "error": "Task assignment could not be updated"
+            }, 409
+
+        except SQLAlchemyError:
+            db.session.rollback()
+
+            return {
+                "error": "Task assignment could not be updated"
+            }, 500
+
         return {
-            "error": "Maintenance request is already assigned"
-        }, 409
+            "id": existing_assignment.id,
+            "maintenance_request_id": existing_assignment.maintenance_request_id,
+            "user_id": existing_assignment.user_id,
+            "assigned_at": existing_assignment.assigned_at.isoformat(),
+            "assignment_method": existing_assignment.assignment_method,
+            "score": existing_assignment.score
+        }, 200
 
     assignment = TaskAssignment(
         maintenance_request_id=maintenance_request_id,
@@ -127,7 +170,7 @@ def assign_task(maintenance_request_id):
         db.session.rollback()
 
         return {
-            "error": "Task assignment could not be created because the provided information is invalid"
+            "error": "Task assignment could not be created"
         }, 409
 
     except SQLAlchemyError:
