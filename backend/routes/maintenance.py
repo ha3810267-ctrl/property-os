@@ -1,19 +1,51 @@
+from datetime import datetime, timezone
+
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
-from sqlalchemy import select
+from sqlalchemy import select, delete, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from backend.services.ai_maintenance import analyse_maintenance_request
-from backend.services.task_assignment import assign_task_with_ai
+from backend.services.contractor_response_processing import (
+    process_contractor_response
+)
+from backend.services.ai_maintenance import (
+    analyse_maintenance_request
+)
+from backend.services.task_assignment import (
+    assign_task_with_ai
+)
+from backend.services.external_worker_search import (
+    find_contractors_with_gemini
+)
+from backend.services.external_worker_ranking import (
+    rank_external_workers
+)
+from backend.services.contractor_outreach import (
+    send_contractor_request
+)
+
 from backend.utils.audit import create_audit_log
 from backend.database import db
 from backend.auth import get_current_user
-from backend.models.maintenance_request import MaintenanceRequest
+
+from backend.models.maintenance_request import (
+    MaintenanceRequest
+)
+from backend.models.task_assignment import (
+    TaskAssignment
+)
+from backend.models.external_worker_candidate import (
+    ExternalWorkerCandidate
+)
 from backend.models.tenant import Tenant
 from backend.models.property import Property
+from backend.models.user import User
 
 
-maintenance_bp = Blueprint("maintenance", __name__)
+maintenance_bp = Blueprint(
+    "maintenance",
+    __name__
+)
 
 
 ALLOWED_STATUSES = {
@@ -30,6 +62,10 @@ ALLOWED_PRIORITIES = {
     "urgent"
 }
 
+
+# ============================================================
+# HELPERS
+# ============================================================
 
 def get_maintenance_request_for_user(
     maintenance_request_id,
@@ -52,18 +88,196 @@ def get_maintenance_request_for_user(
     ).scalar_one_or_none()
 
 
-def maintenance_request_response(maintenance_request):
+def maintenance_request_response(
+    maintenance_request
+):
+    assignments = db.session.execute(
+        select(
+            TaskAssignment,
+            User.name
+        )
+        .join(
+            User,
+            TaskAssignment.user_id == User.id
+        )
+        .where(
+            TaskAssignment.maintenance_request_id
+            == maintenance_request.id
+        )
+        .order_by(
+            TaskAssignment.id
+        )
+    ).all()
+
+    external_candidates = db.session.execute(
+        select(ExternalWorkerCandidate)
+        .where(
+            ExternalWorkerCandidate.maintenance_request_id
+            == maintenance_request.id
+        )
+        .order_by(
+            ExternalWorkerCandidate.match_score.desc().nullslast(),
+            ExternalWorkerCandidate.rating.desc().nullslast(),
+            ExternalWorkerCandidate.id
+        )
+    ).scalars().all()
+
     return {
         "id": maintenance_request.id,
+
         "description": maintenance_request.description,
+
         "tenant_id": maintenance_request.tenant_id,
-        "assigned_to": maintenance_request.assigned_to,
+
+        "assignments": [
+            {
+                "id": assignment.id,
+                "user_id": assignment.user_id,
+                "worker_name": worker_name,
+                "assignment_method": (
+                    assignment.assignment_method
+                ),
+                "score": assignment.score
+            }
+            for assignment, worker_name in assignments
+        ],
+
+        "external_workers": [
+            {
+                "id": candidate.id,
+                "provider": candidate.provider,
+                "external_id": candidate.external_id,
+                "name": candidate.name,
+                "trade": candidate.trade,
+                "location": candidate.location,
+                "website": candidate.website,
+                "phone": candidate.phone,
+                "email": candidate.email,
+                "source_url": candidate.source_url,
+                "rating": candidate.rating,
+                "review_count": candidate.review_count,
+                "availability": candidate.availability,
+
+                "match_score": candidate.match_score,
+                "match_reason": candidate.match_reason,
+
+                "contact_status": (
+                    candidate.contact_status
+                ),
+
+                "email_sent_at": (
+                    candidate.email_sent_at.isoformat()
+                    if candidate.email_sent_at
+                    else None
+                ),
+
+                "response_received_at": (
+                    candidate.response_received_at.isoformat()
+                    if candidate.response_received_at
+                    else None
+                ),
+
+                "last_message": candidate.last_message,
+
+                "gemini_summary": (
+                    candidate.gemini_summary
+                ),
+
+                "response_quality": (
+                    candidate.response_quality
+                ),
+
+                "quoted_price": (
+                    candidate.quoted_price
+                ),
+
+                "estimated_start": (
+                    candidate.estimated_start
+                ),
+
+                "can_take_job": getattr(
+                    candidate,
+                    "can_take_job",
+                    None
+                ),
+
+                "is_selected": (
+                    candidate.is_selected
+                ),
+
+                "selected_at": (
+                    candidate.selected_at.isoformat()
+                    if candidate.selected_at
+                    else None
+                ),
+
+                "created_at": (
+                    candidate.created_at.isoformat()
+                    if candidate.created_at
+                    else None
+                ),
+
+                "updated_at": (
+                    candidate.updated_at.isoformat()
+                    if candidate.updated_at
+                    else None
+                )
+            }
+            for candidate in external_candidates
+        ],
+
         "status": maintenance_request.status,
+
         "priority": maintenance_request.priority,
+
         "category": maintenance_request.category,
-        "created_at": maintenance_request.created_at.isoformat()
+
+        "created_at": (
+            maintenance_request.created_at.isoformat()
+        )
     }
 
+
+def get_property_location_for_request(
+    maintenance_request,
+    organisation_id
+):
+    tenant = db.session.execute(
+        select(Tenant).where(
+            Tenant.id == maintenance_request.tenant_id
+        )
+    ).scalar_one_or_none()
+
+    if not tenant:
+        return None
+
+    property_record = db.session.execute(
+        select(Property).where(
+            Property.id == tenant.property_id,
+            Property.organisation_id == organisation_id
+        )
+    ).scalar_one_or_none()
+
+    if not property_record:
+        return None
+
+    location = getattr(
+        property_record,
+        "location",
+        None
+    )
+
+    if not isinstance(location, str):
+        return None
+
+    location = location.strip()
+
+    return location or None
+
+
+# ============================================================
+# CREATE MAINTENANCE REQUEST
+# ============================================================
 
 @maintenance_bp.route(
     "/maintenance-requests",
@@ -72,35 +286,31 @@ def maintenance_request_response(maintenance_request):
 @jwt_required()
 def create_maintenance_request():
 
-    data = request.get_json(silent=True)
+    data = request.get_json(
+        silent=True
+    )
 
     if not isinstance(data, dict):
         return {
-            "error": "Request body must be a valid JSON object"
+            "error": (
+                "Request body must be a valid JSON object"
+            )
         }, 400
 
     description = data.get("description")
     tenant_id = data.get("tenant_id")
 
-    if not isinstance(description, str) or not description.strip():
+    if (
+        not isinstance(description, str)
+        or not description.strip()
+    ):
         return {
-            "error": "Maintenance description is required"
-        }, 400
-
-    if not isinstance(tenant_id, int) or isinstance(tenant_id, bool):
-        return {
-            "error": "Tenant ID must be a valid integer"
+            "error": (
+                "Maintenance description is required"
+            )
         }, 400
 
     description = description.strip()
-
-    try:
-        ai_result = analyse_maintenance_request(description)
-
-    except ValueError as e:
-        return {
-            "error": str(e)
-        }, 422
 
     user = get_current_user()
 
@@ -108,6 +318,39 @@ def create_maintenance_request():
         return {
             "error": "User not found"
         }, 404
+
+    if user.role == "tenant":
+
+        if not user.tenant_id:
+            return {
+                "error": (
+                    "Tenant account is not properly configured"
+                )
+            }, 403
+
+        tenant_id = user.tenant_id
+
+    else:
+
+        if (
+            not isinstance(tenant_id, int)
+            or isinstance(tenant_id, bool)
+        ):
+            return {
+                "error": (
+                    "Tenant ID must be a valid integer"
+                )
+            }, 400
+
+    try:
+        ai_result = analyse_maintenance_request(
+            description
+        )
+
+    except ValueError as exc:
+        return {
+            "error": str(exc)
+        }, 422
 
     tenant = db.session.execute(
         select(Tenant)
@@ -117,7 +360,8 @@ def create_maintenance_request():
         )
         .where(
             Tenant.id == tenant_id,
-            Property.organisation_id == user.organisation_id
+            Property.organisation_id
+            == user.organisation_id
         )
     ).scalar_one_or_none()
 
@@ -133,13 +377,17 @@ def create_maintenance_request():
         category=ai_result["category"]
     )
 
-    db.session.add(maintenance_request)
+    db.session.add(
+        maintenance_request
+    )
 
     try:
+
         db.session.flush()
 
-        assignment = assign_task_with_ai(
-            maintenance_request.id
+        assignments = assign_task_with_ai(
+            maintenance_request.id,
+            ai_result["required_trades"]
         )
 
         create_audit_log(
@@ -149,7 +397,7 @@ def create_maintenance_request():
             resource_id=maintenance_request.id
         )
 
-        if assignment:
+        if assignments:
             create_audit_log(
                 user=user,
                 action="maintenance_request_ai_assigned",
@@ -160,23 +408,34 @@ def create_maintenance_request():
         db.session.commit()
 
     except IntegrityError:
+
         db.session.rollback()
 
         return {
-            "error": "Maintenance request could not be created because the provided information is invalid"
+            "error": (
+                "Maintenance request could not be created "
+                "because the provided information is invalid"
+            )
         }, 409
 
     except SQLAlchemyError:
+
         db.session.rollback()
 
         return {
-            "error": "Maintenance request could not be created"
+            "error": (
+                "Maintenance request could not be created"
+            )
         }, 500
 
     return maintenance_request_response(
         maintenance_request
     ), 201
 
+
+# ============================================================
+# GET ALL MAINTENANCE REQUESTS
+# ============================================================
 
 @maintenance_bp.route(
     "/maintenance-requests",
@@ -192,7 +451,7 @@ def get_maintenance_requests():
             "error": "User not found"
         }, 404
 
-    maintenance_requests = db.session.execute(
+    query = (
         select(MaintenanceRequest)
         .join(
             Tenant,
@@ -203,20 +462,44 @@ def get_maintenance_requests():
             Tenant.property_id == Property.id
         )
         .where(
-            Property.organisation_id == user.organisation_id
+            Property.organisation_id
+            == user.organisation_id
         )
         .order_by(
             MaintenanceRequest.created_at.desc()
         )
+    )
+
+    if user.role == "tenant":
+
+        if not user.tenant_id:
+            return {
+                "error": (
+                    "Tenant account is not properly configured"
+                )
+            }, 403
+
+        query = query.where(
+            MaintenanceRequest.tenant_id
+            == user.tenant_id
+        )
+
+    maintenance_requests = db.session.execute(
+        query
     ).scalars().all()
 
     return [
         maintenance_request_response(
             maintenance_request
         )
-        for maintenance_request in maintenance_requests
+        for maintenance_request
+        in maintenance_requests
     ], 200
 
+
+# ============================================================
+# GET SINGLE MAINTENANCE REQUEST
+# ============================================================
 
 @maintenance_bp.route(
     "/maintenance-requests/<int:maintenance_request_id>",
@@ -234,20 +517,973 @@ def get_maintenance_request(
             "error": "User not found"
         }, 404
 
-    maintenance_request = get_maintenance_request_for_user(
-        maintenance_request_id,
-        user.organisation_id
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
     )
 
     if not maintenance_request:
         return {
-            "error": "Maintenance request not found"
+            "error": (
+                "Maintenance request not found"
+            )
         }, 404
+
+    if user.role == "tenant":
+
+        if (
+            not user.tenant_id
+            or maintenance_request.tenant_id
+            != user.tenant_id
+        ):
+            return {
+                "error": (
+                    "Maintenance request not found"
+                )
+            }, 404
 
     return maintenance_request_response(
         maintenance_request
     ), 200
 
+
+# ============================================================
+# MANUAL INTERNAL WORKER ASSIGNMENT
+# ============================================================
+
+@maintenance_bp.route(
+    "/maintenance-requests/<int:maintenance_request_id>/assign",
+    methods=["POST"]
+)
+@jwt_required()
+def manually_assign_maintenance_request(
+    maintenance_request_id
+):
+
+    user = get_current_user()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }, 404
+
+    if user.role not in {
+        "admin",
+        "property_manager"
+    }:
+        return {
+            "error": (
+                "You do not have permission to assign "
+                "maintenance requests"
+            )
+        }, 403
+
+    data = request.get_json(
+        silent=True
+    )
+
+    if not isinstance(data, dict):
+        return {
+            "error": (
+                "Request body must be a valid JSON object"
+            )
+        }, 400
+
+    user_id = data.get("user_id")
+
+    if (
+        not isinstance(user_id, int)
+        or isinstance(user_id, bool)
+    ):
+        return {
+            "error": (
+                "Worker ID must be a valid integer"
+            )
+        }, 400
+
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
+    )
+
+    if not maintenance_request:
+        return {
+            "error": (
+                "Maintenance request not found"
+            )
+        }, 404
+
+    worker = db.session.execute(
+        select(User).where(
+            User.id == user_id,
+            User.organisation_id
+            == user.organisation_id,
+            User.role == "worker",
+            User.is_active.is_(True)
+        )
+    ).scalar_one_or_none()
+
+    if not worker:
+        return {
+            "error": "Worker not found"
+        }, 404
+
+    existing_assignment = db.session.execute(
+        select(TaskAssignment).where(
+            TaskAssignment.maintenance_request_id
+            == maintenance_request.id,
+            TaskAssignment.user_id
+            == worker.id
+        )
+    ).scalar_one_or_none()
+
+    if existing_assignment:
+        return maintenance_request_response(
+            maintenance_request
+        ), 200
+
+    try:
+
+        assignment = TaskAssignment(
+            maintenance_request_id=(
+                maintenance_request.id
+            ),
+            user_id=worker.id,
+            assignment_method="manual",
+            score=None
+        )
+
+        db.session.add(
+            assignment
+        )
+
+        db.session.flush()
+
+        create_audit_log(
+            user=user,
+            action=(
+                "maintenance_request_manual_assignment_added"
+            ),
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
+        db.session.commit()
+
+    except IntegrityError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "Worker is already assigned to "
+                "this request"
+            )
+        }, 409
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "Maintenance request could not be "
+                "manually assigned"
+            )
+        }, 500
+
+    return maintenance_request_response(
+        maintenance_request
+    ), 200
+
+
+# ============================================================
+# REMOVE INTERNAL WORKER ASSIGNMENT
+# ============================================================
+
+@maintenance_bp.route(
+    "/maintenance-requests/<int:maintenance_request_id>/assign/<int:worker_id>",
+    methods=["DELETE"]
+)
+@jwt_required()
+def remove_maintenance_assignment(
+    maintenance_request_id,
+    worker_id
+):
+
+    user = get_current_user()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }, 404
+
+    if user.role not in {
+        "admin",
+        "property_manager"
+    }:
+        return {
+            "error": (
+                "You do not have permission to "
+                "remove assignments"
+            )
+        }, 403
+
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
+    )
+
+    if not maintenance_request:
+        return {
+            "error": (
+                "Maintenance request not found"
+            )
+        }, 404
+
+    assignment = db.session.execute(
+        select(TaskAssignment)
+        .join(
+            User,
+            TaskAssignment.user_id == User.id
+        )
+        .where(
+            TaskAssignment.maintenance_request_id
+            == maintenance_request.id,
+            TaskAssignment.user_id == worker_id,
+            User.organisation_id
+            == user.organisation_id
+        )
+    ).scalar_one_or_none()
+
+    if not assignment:
+        return {
+            "error": (
+                "Worker is not assigned to this request"
+            )
+        }, 404
+
+    try:
+
+        db.session.delete(
+            assignment
+        )
+
+        create_audit_log(
+            user=user,
+            action=(
+                "maintenance_request_assignment_removed"
+            ),
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
+        db.session.commit()
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "Assignment could not be removed"
+            )
+        }, 500
+
+    return maintenance_request_response(
+        maintenance_request
+    ), 200
+
+
+# ============================================================
+# GEMINI CONTRACTOR DISCOVERY
+# + GEMINI RANKING
+# + AUTOMATIC OUTREACH
+# ============================================================
+
+@maintenance_bp.route(
+    "/maintenance-requests/<int:maintenance_request_id>/external-workers/search",
+    methods=["POST"]
+)
+@jwt_required()
+def search_external_workers_for_request(
+    maintenance_request_id
+):
+
+    user = get_current_user()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }, 404
+
+    if user.role not in {
+        "admin",
+        "property_manager"
+    }:
+        return {
+            "error": (
+                "You do not have permission to search "
+                "for external contractors"
+            )
+        }, 403
+
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
+    )
+
+    if not maintenance_request:
+        return {
+            "error": (
+                "Maintenance request not found"
+            )
+        }, 404
+
+    data = request.get_json(
+        silent=True
+    )
+
+    if data is None:
+        data = {}
+
+    if not isinstance(data, dict):
+        return {
+            "error": (
+                "Request body must be a valid JSON object"
+            )
+        }, 400
+
+    location = data.get("location")
+
+    if location is not None:
+
+        if not isinstance(location, str):
+            return {
+                "error": "Location must be a string"
+            }, 400
+
+        location = location.strip()
+
+        if not location:
+            location = None
+
+    # --------------------------------------------------------
+    # Determine required trades
+    # --------------------------------------------------------
+
+    try:
+
+        ai_result = analyse_maintenance_request(
+            maintenance_request.description
+        )
+
+        required_trades = ai_result.get(
+            "required_trades",
+            []
+        )
+
+    except ValueError as exc:
+
+        return {
+            "error": str(exc)
+        }, 422
+
+    if not required_trades:
+        return {
+            "error": (
+                "Could not determine the required "
+                "external contractor trade"
+            )
+        }, 422
+
+    # --------------------------------------------------------
+    # Determine property location
+    # --------------------------------------------------------
+
+    if not location:
+
+        location = get_property_location_for_request(
+            maintenance_request,
+            user.organisation_id
+        )
+
+    # --------------------------------------------------------
+    # Gemini contractor discovery
+    # --------------------------------------------------------
+
+    print(
+        "[external search] started: "
+        f"request={maintenance_request.id}, "
+        f"trades={required_trades}, "
+        f"location={location!r}",
+        flush=True
+    )
+
+    try:
+
+        candidates = find_contractors_with_gemini(
+            maintenance_request_id=maintenance_request.id,
+            required_trades=required_trades,
+            location=location
+        )
+
+        print(
+            "[external search] Gemini returned "
+            f"{len(candidates)} candidate(s)",
+            flush=True
+        )
+
+        for candidate in candidates:
+            print(
+                "[external search] candidate: "
+                f"name={candidate.name!r}, "
+                f"trade={candidate.trade!r}, "
+                f"email={candidate.email!r}, "
+                f"source={candidate.source_url!r}",
+                flush=True
+            )
+
+    except ValueError as exc:
+
+        print(
+            "[external search] Gemini validation error: "
+            f"{exc!r}",
+            flush=True
+        )
+
+        return {
+            "error": str(exc)
+        }, 422
+
+    except Exception as exc:
+
+        print(
+            "[external search] Gemini discovery error: "
+            f"{exc!r}",
+            flush=True
+        )
+
+        return {
+            "error": (
+                "Gemini could not find external contractors"
+            )
+        }, 500
+
+    if not isinstance(candidates, list):
+
+        return {
+            "error": (
+                "Gemini contractor search returned "
+                "an invalid result"
+            )
+        }, 500
+
+    # --------------------------------------------------------
+    # Remove duplicates
+    # --------------------------------------------------------
+
+    existing_candidates = db.session.execute(
+        select(ExternalWorkerCandidate)
+        .where(
+            ExternalWorkerCandidate.maintenance_request_id
+            == maintenance_request.id
+        )
+    ).scalars().all()
+
+    existing_keys = {
+        (
+            candidate.provider,
+            candidate.external_id
+        )
+        for candidate in existing_candidates
+    }
+
+    new_candidates = []
+
+    for candidate in candidates:
+
+        if not isinstance(
+            candidate,
+            ExternalWorkerCandidate
+        ):
+            continue
+
+        candidate_key = (
+            candidate.provider,
+            candidate.external_id
+        )
+
+        if candidate_key in existing_keys:
+            continue
+
+        candidate.maintenance_request_id = (
+            maintenance_request.id
+        )
+
+        new_candidates.append(
+            candidate
+        )
+
+        existing_keys.add(
+            candidate_key
+        )
+
+    print(
+        "[external search] "
+        f"{len(new_candidates)} new candidate(s) remain "
+        "after duplicate filtering",
+        flush=True
+    )
+
+    # --------------------------------------------------------
+    # Gemini ranking
+    # --------------------------------------------------------
+
+    ranking_error = None
+
+    if new_candidates:
+
+        try:
+
+            new_candidates = rank_external_workers(
+                maintenance_description=(
+                    maintenance_request.description
+                ),
+                required_trades=required_trades,
+                candidates=new_candidates
+            )
+
+        except Exception as exc:
+
+            ranking_error = str(exc)
+
+            print(
+                "Gemini contractor ranking error:",
+                repr(exc)
+            )
+
+            for candidate in new_candidates:
+
+                candidate.match_score = None
+                candidate.match_reason = None
+
+    # --------------------------------------------------------
+    # Save candidates
+    # --------------------------------------------------------
+
+    added_candidates = []
+
+    try:
+
+        for candidate in new_candidates:
+
+            db.session.add(candidate)
+            added_candidates.append(candidate)
+
+        db.session.flush()
+
+        create_audit_log(
+            user=user,
+            action=(
+                "maintenance_gemini_contractor_search"
+            ),
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
+        if added_candidates:
+
+            create_audit_log(
+                user=user,
+                action=(
+                    "maintenance_gemini_contractor_ranking"
+                ),
+                resource_type="maintenance_request",
+                resource_id=maintenance_request.id
+            )
+
+        db.session.commit()
+
+    except IntegrityError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "External contractor candidates "
+                "could not be created"
+            )
+        }, 409
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "External contractor candidates "
+                "could not be saved"
+            )
+        }, 500
+
+    # --------------------------------------------------------
+    # Automatic outreach
+    # --------------------------------------------------------
+
+    outreach_results = []
+
+    for candidate in added_candidates:
+
+        if not candidate.email:
+
+            candidate.contact_status = "no_email"
+
+            outreach_results.append({
+                "candidate_id": candidate.id,
+                "status": "no_email"
+            })
+
+            continue
+
+        try:
+
+            send_contractor_request(
+                candidate=candidate,
+                maintenance_request=maintenance_request
+            )
+
+            outreach_results.append({
+                "candidate_id": candidate.id,
+                "status": "contacted"
+            })
+
+        except Exception as exc:
+
+            print(
+                "Contractor outreach error:",
+                repr(exc)
+            )
+
+            candidate.contact_status = (
+                "email_failed"
+            )
+
+            outreach_results.append({
+                "candidate_id": candidate.id,
+                "status": "email_failed"
+            })
+
+    try:
+
+        db.session.commit()
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "Contractor outreach state could "
+                "not be saved"
+            )
+        }, 500
+
+    response = {
+        "message": (
+            "Gemini discovered, ranked and contacted "
+            "external contractors"
+        ),
+
+        "required_trades": required_trades,
+
+        "location": location,
+
+        "discovered": len(
+            added_candidates
+        ),
+
+        "ranking": (
+            "completed"
+            if ranking_error is None
+            else "failed"
+        ),
+
+        "outreach": outreach_results,
+
+        "maintenance_request": (
+            maintenance_request_response(
+                maintenance_request
+            )
+        )
+    }
+
+    if ranking_error:
+
+        response["ranking_warning"] = (
+            "Contractors were discovered successfully "
+            "but Gemini ranking failed"
+        )
+
+    print(
+        "[external search] complete: "
+        f"discovered={response['discovered']}, "
+        f"ranking={response['ranking']}, "
+        f"outreach={response['outreach']}",
+        flush=True
+    )
+
+    return response, 200
+
+
+# ============================================================
+# SELECT EXTERNAL CONTRACTOR
+# ============================================================
+
+@maintenance_bp.route(
+    "/maintenance-requests/<int:maintenance_request_id>/external-workers/<int:candidate_id>/select",
+    methods=["POST"]
+)
+@jwt_required()
+def select_external_worker(
+    maintenance_request_id,
+    candidate_id
+):
+
+    user = get_current_user()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }, 404
+
+    if user.role not in {
+        "admin",
+        "property_manager"
+    }:
+        return {
+            "error": (
+                "You do not have permission to "
+                "select an external contractor"
+            )
+        }, 403
+
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
+    )
+
+    if not maintenance_request:
+        return {
+            "error": (
+                "Maintenance request not found"
+            )
+        }, 404
+
+    candidate = db.session.execute(
+        select(ExternalWorkerCandidate)
+        .where(
+            ExternalWorkerCandidate.id
+            == candidate_id,
+            ExternalWorkerCandidate.maintenance_request_id
+            == maintenance_request.id
+        )
+    ).scalar_one_or_none()
+
+    if not candidate:
+        return {
+            "error": (
+                "External contractor candidate "
+                "not found"
+            )
+        }, 404
+
+    try:
+
+        db.session.execute(
+            update(ExternalWorkerCandidate)
+            .where(
+                ExternalWorkerCandidate
+                .maintenance_request_id
+                == maintenance_request.id
+            )
+            .values(
+                is_selected=False,
+                selected_at=None
+            )
+        )
+
+        candidate.is_selected = True
+
+        candidate.selected_at = (
+            datetime.now(timezone.utc)
+        )
+
+        create_audit_log(
+            user=user,
+            action=(
+                "maintenance_external_worker_selected"
+            ),
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
+        db.session.commit()
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "External contractor could "
+                "not be selected"
+            )
+        }, 500
+
+    return maintenance_request_response(
+        maintenance_request
+    ), 200
+
+
+# ============================================================
+# MANUAL CONTACT ENDPOINT
+# ============================================================
+
+@maintenance_bp.route(
+    "/maintenance-requests/<int:maintenance_request_id>/external-workers/<int:candidate_id>/contact",
+    methods=["POST"]
+)
+@jwt_required()
+def contact_external_worker(
+    maintenance_request_id,
+    candidate_id
+):
+
+    user = get_current_user()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }, 404
+
+    if user.role not in {
+        "admin",
+        "property_manager"
+    }:
+        return {
+            "error": (
+                "You do not have permission to "
+                "contact external contractors"
+            )
+        }, 403
+
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
+    )
+
+    if not maintenance_request:
+        return {
+            "error": (
+                "Maintenance request not found"
+            )
+        }, 404
+
+    candidate = db.session.execute(
+        select(ExternalWorkerCandidate)
+        .where(
+            ExternalWorkerCandidate.id
+            == candidate_id,
+            ExternalWorkerCandidate.maintenance_request_id
+            == maintenance_request.id
+        )
+    ).scalar_one_or_none()
+
+    if not candidate:
+        return {
+            "error": (
+                "External contractor candidate "
+                "not found"
+            )
+        }, 404
+
+    if not candidate.email:
+        return {
+            "error": (
+                "This contractor does not have "
+                "a verified email address"
+            )
+        }, 422
+
+    if candidate.contact_status in {
+        "contacted",
+        "email_sent",
+        "response_received",
+        "responded",
+        "available",
+        "unavailable"
+    }:
+        return {
+            "error": (
+                "This contractor has already "
+                "been contacted"
+            )
+        }, 409
+
+    try:
+
+        send_contractor_request(
+            candidate=candidate,
+            maintenance_request=maintenance_request
+        )
+
+        create_audit_log(
+            user=user,
+            action=(
+                "maintenance_external_worker_contacted"
+            ),
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
+        db.session.commit()
+
+    except Exception as exc:
+
+        db.session.rollback()
+
+        print(
+            "External contractor email error:",
+            repr(exc)
+        )
+
+        return {
+            "error": (
+                "The contractor email could not be sent"
+            )
+        }, 500
+
+    return maintenance_request_response(
+        maintenance_request
+    ), 200
+
+
+# ============================================================
+# UPDATE MAINTENANCE REQUEST
+# ============================================================
 
 @maintenance_bp.route(
     "/maintenance-requests/<int:maintenance_request_id>",
@@ -258,11 +1494,15 @@ def update_maintenance_request(
     maintenance_request_id
 ):
 
-    data = request.get_json(silent=True)
+    data = request.get_json(
+        silent=True
+    )
 
     if not isinstance(data, dict):
         return {
-            "error": "Request body must be a valid JSON object"
+            "error": (
+                "Request body must be a valid JSON object"
+            )
         }, 400
 
     user = get_current_user()
@@ -277,17 +1517,24 @@ def update_maintenance_request(
         "property_manager"
     }:
         return {
-            "error": "You do not have permission to update this request"
+            "error": (
+                "You do not have permission to "
+                "update this request"
+            )
         }, 403
 
-    maintenance_request = get_maintenance_request_for_user(
-        maintenance_request_id,
-        user.organisation_id
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
     )
 
     if not maintenance_request:
         return {
-            "error": "Maintenance request not found"
+            "error": (
+                "Maintenance request not found"
+            )
         }, 404
 
     allowed_fields = {
@@ -296,16 +1543,23 @@ def update_maintenance_request(
         "category"
     }
 
-    unexpected_fields = set(data.keys()) - allowed_fields
+    unexpected_fields = (
+        set(data.keys())
+        - allowed_fields
+    )
 
     if unexpected_fields:
         return {
-            "error": "Request contains unsupported fields"
+            "error": (
+                "Request contains unsupported fields"
+            )
         }, 400
 
     if not data:
         return {
-            "error": "At least one field is required"
+            "error": (
+                "At least one field is required"
+            )
         }, 400
 
     status = data.get("status")
@@ -323,7 +1577,9 @@ def update_maintenance_request(
 
         if status not in ALLOWED_STATUSES:
             return {
-                "error": "Invalid maintenance request status"
+                "error": (
+                    "Invalid maintenance request status"
+                )
             }, 400
 
         maintenance_request.status = status
@@ -339,7 +1595,9 @@ def update_maintenance_request(
 
         if priority not in ALLOWED_PRIORITIES:
             return {
-                "error": "Invalid maintenance request priority"
+                "error": (
+                    "Invalid maintenance request priority"
+                )
             }, 400
 
         maintenance_request.priority = priority
@@ -355,42 +1613,397 @@ def update_maintenance_request(
 
         if not category:
             return {
-                "error": "Category cannot be empty"
+                "error": (
+                    "Category cannot be empty"
+                )
             }, 400
 
         if len(category) > 100:
             return {
-                "error": "Category must be 100 characters or fewer"
+                "error": (
+                    "Category must be 100 characters "
+                    "or fewer"
+                )
             }, 400
 
         maintenance_request.category = category
 
     try:
-        db.session.flush()
+
+        if status == "completed":
+
+            db.session.execute(
+                delete(TaskAssignment).where(
+                    TaskAssignment
+                    .maintenance_request_id
+                    == maintenance_request.id
+                )
+            )
+
+            db.session.execute(
+                delete(
+                    ExternalWorkerCandidate
+                ).where(
+                    ExternalWorkerCandidate
+                    .maintenance_request_id
+                    == maintenance_request.id
+                )
+            )
+
+            create_audit_log(
+                user=user,
+                action=(
+                    "maintenance_request_completed"
+                ),
+                resource_type="maintenance_request",
+                resource_id=maintenance_request.id
+            )
+
+            db.session.delete(
+                maintenance_request
+            )
+
+        else:
+
+            db.session.flush()
+
+            create_audit_log(
+                user=user,
+                action=(
+                    "maintenance_request_updated"
+                ),
+                resource_type="maintenance_request",
+                resource_id=maintenance_request.id
+            )
+
+        db.session.commit()
+
+    except IntegrityError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "Maintenance request could not be "
+                "updated because the provided "
+                "information is invalid"
+            )
+        }, 409
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "Maintenance request could "
+                "not be updated"
+            )
+        }, 500
+
+    if status == "completed":
+
+        return {
+            "message": (
+                "Maintenance request completed "
+                "and removed"
+            ),
+            "id": maintenance_request_id
+        }, 200
+
+    return maintenance_request_response(
+        maintenance_request
+    ), 200
+
+
+# ============================================================
+# DELETE MAINTENANCE REQUEST
+# ============================================================
+
+@maintenance_bp.route(
+    "/maintenance-requests/<int:maintenance_request_id>",
+    methods=["DELETE"]
+)
+@jwt_required()
+def delete_maintenance_request(
+    maintenance_request_id
+):
+
+    user = get_current_user()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }, 404
+
+    if user.role not in {
+        "admin",
+        "property_manager"
+    }:
+        return {
+            "error": (
+                "You do not have permission to "
+                "delete this request"
+            )
+        }, 403
+
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
+    )
+
+    if not maintenance_request:
+        return {
+            "error": (
+                "Maintenance request not found"
+            )
+        }, 404
+
+    try:
+
+        db.session.execute(
+            delete(TaskAssignment).where(
+                TaskAssignment
+                .maintenance_request_id
+                == maintenance_request.id
+            )
+        )
+
+        db.session.execute(
+            delete(
+                ExternalWorkerCandidate
+            ).where(
+                ExternalWorkerCandidate
+                .maintenance_request_id
+                == maintenance_request.id
+            )
+        )
 
         create_audit_log(
             user=user,
-            action="maintenance_request_updated",
+            action=(
+                "maintenance_request_deleted"
+            ),
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
+        db.session.delete(
+            maintenance_request
+        )
+
+        db.session.commit()
+
+    except IntegrityError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "Maintenance request could "
+                "not be deleted"
+            )
+        }, 409
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "Maintenance request could "
+                "not be deleted"
+            )
+        }, 500
+
+    return {
+        "message": (
+            "Maintenance request deleted successfully"
+        ),
+        "id": maintenance_request_id
+    }, 200
+
+
+# ============================================================
+# CONTRACTOR RESPONSE PROCESSING
+# ============================================================
+
+@maintenance_bp.route(
+    "/maintenance-requests/<int:maintenance_request_id>/external-workers/<int:candidate_id>/response",
+    methods=["POST"]
+)
+@jwt_required()
+def process_external_worker_response(
+    maintenance_request_id,
+    candidate_id
+):
+
+    user = get_current_user()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }, 404
+
+    if user.role not in {
+        "admin",
+        "property_manager"
+    }:
+        return {
+            "error": (
+                "You do not have permission to "
+                "process contractor responses"
+            )
+        }, 403
+
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
+    )
+
+    if not maintenance_request:
+        return {
+            "error": (
+                "Maintenance request not found"
+            )
+        }, 404
+
+    data = request.get_json(
+        silent=True
+    )
+
+    if not isinstance(data, dict):
+        return {
+            "error": (
+                "Request body must be a valid JSON object"
+            )
+        }, 400
+
+    contractor_response = data.get("response")
+
+    if (
+        not isinstance(
+            contractor_response,
+            str
+        )
+        or not contractor_response.strip()
+    ):
+        return {
+            "error": (
+                "Contractor response is required"
+            )
+        }, 400
+
+    candidate = db.session.execute(
+        select(ExternalWorkerCandidate)
+        .where(
+            ExternalWorkerCandidate.id
+            == candidate_id,
+            ExternalWorkerCandidate.maintenance_request_id
+            == maintenance_request.id
+        )
+    ).scalar_one_or_none()
+
+    if not candidate:
+        return {
+            "error": (
+                "External contractor candidate "
+                "not found"
+            )
+        }, 404
+
+    try:
+
+        result = process_contractor_response(
+            candidate=candidate,
+            maintenance_request=maintenance_request,
+            contractor_response=contractor_response.strip()
+        )
+
+        create_audit_log(
+            user=user,
+            action=(
+                "maintenance_external_worker_response_processed"
+            ),
             resource_type="maintenance_request",
             resource_id=maintenance_request.id
         )
 
         db.session.commit()
 
-    except IntegrityError:
+    except ValueError as exc:
+
         db.session.rollback()
 
         return {
-            "error": "Maintenance request could not be updated because the provided information is invalid"
-        }, 409
+            "error": str(exc)
+        }, 422
 
-    except SQLAlchemyError:
+    except RuntimeError as exc:
+
         db.session.rollback()
 
+        print(
+            "Contractor response processing error:",
+            repr(exc)
+        )
+
         return {
-            "error": "Maintenance request could not be updated"
+            "error": str(exc)
         }, 500
 
-    return maintenance_request_response(
-        maintenance_request
-    ), 200
+    except SQLAlchemyError as exc:
+
+        db.session.rollback()
+
+        print(
+            "Contractor response database error:",
+            repr(exc)
+        )
+
+        return {
+            "error": (
+                "Contractor response processing "
+                "could not be saved"
+            )
+        }, 500
+
+    except Exception as exc:
+
+        db.session.rollback()
+
+        print(
+            "Unexpected contractor response "
+            "processing error:",
+            repr(exc)
+        )
+
+        return {
+            "error": (
+                "Contractor response could "
+                "not be processed"
+            )
+        }, 500
+
+    return {
+        "message": (
+            "Contractor response processed "
+            "and contractor rankings updated"
+        ),
+
+        "candidate_id": candidate.id,
+
+        "analysis": result.get(
+            "analysis"
+        ),
+
+        "maintenance_request": (
+            maintenance_request_response(
+                maintenance_request
+            )
+        )
+    }, 200

@@ -30,9 +30,9 @@ class User(db.Model):
     )
 
     password_reset_expires_at = db.Column(
-    db.DateTime(timezone=True),
-    nullable=True
-)
+        db.DateTime(timezone=True),
+        nullable=True
+    )
 
     role = db.Column(
         db.String(50),
@@ -44,8 +44,20 @@ class User(db.Model):
         nullable=True
     )
 
+    is_active = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True
+    )
+
     organisation_id = db.Column(
         db.Integer,
         db.ForeignKey("organisation.id"),
         nullable=False
+    )
+
+    tenant_id = db.Column(
+        db.Integer,
+        db.ForeignKey("tenant.id"),
+        nullable=True
     )

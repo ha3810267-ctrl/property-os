@@ -89,7 +89,8 @@ def assign_task(maintenance_request_id):
         select(User).where(
             User.id == user_id,
             User.organisation_id == current_user.organisation_id,
-            User.role == "worker"
+            User.role == "worker",
+            User.is_active.is_(True)
         )
     ).scalar_one_or_none()
 

@@ -1,0 +1,473 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #172033;
+  background: #f7f8fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* =========================
+   PropertyOS Authentication
+   ========================= */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: #f7f8fb;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 430px;
+  padding: 38px;
+  background: #ffffff;
+  border: 1px solid #e8ebf0;
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(16, 24, 40, 0.07);
+}
+
+.login-card .brand {
+  justify-content: center;
+  padding: 0;
+  margin-bottom: 38px;
+}
+
+.login-header {
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.login-header .eyebrow {
+  margin-bottom: 8px;
+}
+
+.login-header h1 {
+  margin: 0;
+  color: #172033;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.login-header p:last-child {
+  margin: 10px 0 0;
+  color: #7b8494;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.login-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.login-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 13px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  outline: none;
+  background: #ffffff;
+  color: #172033;
+  font-size: 14px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.login-card input::placeholder {
+  color: #98a2b3;
+}
+
+.login-card input:focus {
+  border-color: #667085;
+  box-shadow: 0 0 0 3px rgba(23, 32, 51, 0.06);
+}
+
+.login-card input:disabled {
+  background: #f9fafb;
+  cursor: not-allowed;
+}
+
+.login-button {
+  width: 100%;
+  margin-top: 4px;
+  padding: 12px 16px;
+}
+
+.login-card .form-error {
+  margin: -4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #fecdca;
+  border-radius: 9px;
+  background: #fef3f2;
+  color: #b42318;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-card > div:last-child p {
+  margin: 0;
+  color: #7b8494;
+  font-size: 13px;
+}
+
+.login-card > div:last-child .secondary-button {
+  display: inline-flex;
+  width: auto;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: #172033;
+  font-size: 13px;
+}
+
+.login-card > div:last-child .secondary-button:hover {
+  background: #f3f5f8;
+  border-color: transparent;
+}
+
+/* Mobile */
+
+@media (max-width: 520px) {
+  .login-page {
+    padding: 24px 16px;
+    align-items: flex-start;
+  }
+
+  .login-card {
+    margin-top: 20px;
+    padding: 28px 22px;
+    border-radius: 15px;
+  }
+
+  .login-card .brand {
+    margin-bottom: 30px;
+  }
+
+  .login-header h1 {
+    font-size: 25px;
+  }
+}
+/* =========================
+   Accept Invitation
+   ========================= */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: #f7f8fb;
+}
+
+.invitation-card {
+  width: 100%;
+  max-width: 500px;
+  padding: 40px;
+  background: #ffffff;
+  border: 1px solid #e8ebf0;
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(16, 24, 40, 0.07);
+}
+
+.invitation-card .eyebrow {
+  margin: 0 0 8px;
+}
+
+.invitation-card h1 {
+  margin: 0;
+  color: #172033;
+  font-size: 30px;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.auth-subtitle {
+  margin: 10px 0 28px;
+  color: #7b8494;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.invitation-icon,
+.invitation-success-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 22px;
+  border-radius: 14px;
+  background: #f3f5f8;
+  color: #172033;
+}
+
+.invitation-success-icon {
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 20px;
+}
+
+.invitation-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.invitation-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.invitation-card input {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  outline: none;
+  background: #ffffff;
+  color: #172033;
+  font-size: 14px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.invitation-card input::placeholder {
+  color: #98a2b3;
+}
+
+.invitation-card input:focus {
+  border-color: #667085;
+  box-shadow: 0 0 0 3px rgba(23, 32, 51, 0.06);
+}
+
+.invitation-card input:disabled {
+  background: #f9fafb;
+  cursor: not-allowed;
+}
+
+.invitation-info {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 24px;
+  padding: 11px 13px;
+  border: 1px solid #e8ebf0;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.invitation-info svg {
+  flex-shrink: 0;
+}
+
+.invitation-error {
+  margin: -4px 0 0;
+}
+
+.invitation-full-button {
+  width: 100%;
+}
+
+.invitation-footer {
+  margin: 22px 0 0;
+  color: #98a2b3;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.invitation-success-icon {
+  color: #027a48;
+  background: #ecfdf3;
+}
+
+.invitation-card .invitation-success-icon + .eyebrow {
+  text-align: center;
+}
+
+.invitation-card .invitation-success-icon ~ h1 {
+  text-align: center;
+}
+
+.invitation-card .invitation-success-icon ~ .auth-subtitle {
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .auth-page {
+    padding: 24px 16px;
+    align-items: flex-start;
+  }
+
+  .invitation-card {
+    margin-top: 20px;
+    padding: 28px 22px;
+    border-radius: 15px;
+  }
+
+  .invitation-card h1 {
+    font-size: 26px;
+  }
+}
+
+.settings-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 900px;
+}
+
+.settings-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.settings-card-heading {
+  padding-bottom: 20px;
+  border-bottom: 1px solid #eef0f2;
+}
+
+.settings-card-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.settings-card-heading p {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.settings-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+  border-bottom: 1px solid #f0f1f3;
+  gap: 30px;
+}
+
+.settings-field:last-child {
+  border-bottom: none;
+}
+
+.settings-field-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.settings-field-value {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+  text-align: right;
+}
+
+.settings-role {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.settings-security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+  gap: 30px;
+}
+
+.settings-security-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-button {
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #374151;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.settings-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-error {
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.settings-loading {
+  color: #6b7280;
+}

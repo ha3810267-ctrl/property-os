@@ -1,15 +1,30 @@
 from flask import Blueprint, request
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+
 from backend.database import db
 from backend.models.user import User
-from werkzeug.security import check_password_hash, generate_password_hash
-from flask_jwt_extended import create_access_token, jwt_required
+from backend.models.tenant import Tenant
+from backend.models.property import Property
+
+from werkzeug.security import (
+    check_password_hash,
+    generate_password_hash
+)
+
+from flask_jwt_extended import (
+    create_access_token,
+    jwt_required
+)
+
 from datetime import datetime, timedelta, timezone
+
 import hashlib
 import secrets
+
 from backend.auth import get_current_user
 from backend.utils.password import validate_password
+from backend.services.email import send_email
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -17,31 +32,59 @@ auth_bp = Blueprint("auth", __name__)
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
-    data = request.get_json()
 
-    if not data:
-        return {"error": "Request body is required"}, 400
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return {
+            "error": "Request body is required"
+        }, 400
 
     email = data.get("email")
     password = data.get("password")
 
-    if not email:
-        return {"error": "Email is required"}, 400
+    if not isinstance(email, str) or not email.strip():
+        return {
+            "error": "Email is required"
+        }, 400
 
-    if not password:
-        return {"error": "Password is required"}, 400
+    if not isinstance(password, str) or not password:
+        return {
+            "error": "Password is required"
+        }, 400
 
     user = db.session.execute(
-        select(User).where(User.email == email)
+        select(User).where(
+            User.email == email.strip().lower()
+        )
     ).scalar_one_or_none()
 
     if not user:
-        return {"error": "Invalid email or password"}, 401
+        return {
+            "error": "Invalid email or password"
+        }, 401
 
-    if not check_password_hash(user.password_hash, password):
-        return {"error": "Invalid email or password"}, 401
+    if not user.is_active:
+        return {
+            "error": "Account is inactive"
+        }, 403
 
-    access_token = create_access_token(identity=str(user.id))
+    if not check_password_hash(
+        user.password_hash,
+        password
+    ):
+        return {
+            "error": "Invalid email or password"
+        }, 401
+
+    access_token = create_access_token(
+        identity=str(user.id),
+        additional_claims={
+            "role": user.role,
+            "tenant_id": user.tenant_id,
+            "organisation_id": user.organisation_id
+        }
+    )
 
     return {
         "access_token": access_token,
@@ -49,8 +92,151 @@ def login():
         "name": user.name,
         "email": user.email,
         "role": user.role,
-        "organisation_id": user.organisation_id
+        "organisation_id": user.organisation_id,
+        "tenant_id": user.tenant_id
     }, 200
+
+
+@auth_bp.route("/tenant-signup", methods=["POST"])
+def tenant_signup():
+
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return {
+            "error": "Request body is required"
+        }, 400
+
+    tenant_id = data.get("tenant_id")
+    email = data.get("email")
+    password = data.get("password")
+
+    if not tenant_id:
+        return {
+            "error": "Tenant ID is required"
+        }, 400
+
+    if not isinstance(email, str) or not email.strip():
+        return {
+            "error": "Email is required"
+        }, 400
+
+    if not isinstance(password, str) or not password:
+        return {
+            "error": "Password is required"
+        }, 400
+
+    password_error = validate_password(password)
+
+    if password_error:
+        return {
+            "error": password_error
+        }, 400
+
+    try:
+        tenant_id = int(tenant_id)
+
+    except (TypeError, ValueError):
+        return {
+            "error": "Invalid tenant ID"
+        }, 400
+
+    email = email.strip().lower()
+
+    tenant = db.session.execute(
+        select(Tenant).where(
+            Tenant.id == tenant_id,
+            Tenant.email == email
+        )
+    ).scalar_one_or_none()
+
+    if not tenant:
+        return {
+            "error": "Tenant account could not be verified"
+        }, 404
+
+    existing_user = db.session.execute(
+        select(User).where(
+            User.tenant_id == tenant.id
+        )
+    ).scalar_one_or_none()
+
+    if existing_user:
+        return {
+            "error": "A tenant account already exists"
+        }, 409
+
+    existing_email = db.session.execute(
+        select(User).where(
+            User.email == email
+        )
+    ).scalar_one_or_none()
+
+    if existing_email:
+        return {
+            "error": "An account with this email already exists"
+        }, 409
+
+    property = db.session.execute(
+        select(Property).where(
+            Property.id == tenant.property_id
+        )
+    ).scalar_one_or_none()
+
+    if not property:
+        return {
+            "error": "Tenant property could not be found"
+        }, 404
+
+    tenant_user = User(
+        name=tenant.name,
+        email=email,
+        password_hash=generate_password_hash(password),
+        role="tenant",
+        speciality=None,
+        is_active=True,
+        organisation_id=property.organisation_id,
+        tenant_id=tenant.id
+    )
+
+    db.session.add(tenant_user)
+
+    try:
+        db.session.commit()
+
+    except IntegrityError:
+        db.session.rollback()
+
+        return {
+            "error": "Could not create tenant account"
+        }, 409
+
+    except SQLAlchemyError:
+        db.session.rollback()
+
+        return {
+            "error": "Could not create tenant account"
+        }, 500
+
+    access_token = create_access_token(
+        identity=str(tenant_user.id),
+        additional_claims={
+            "role": tenant_user.role,
+            "tenant_id": tenant_user.tenant_id,
+            "organisation_id": tenant_user.organisation_id
+        }
+    )
+
+    return {
+        "message": "Tenant account created successfully",
+        "access_token": access_token,
+        "id": tenant_user.id,
+        "name": tenant_user.name,
+        "email": tenant_user.email,
+        "role": tenant_user.role,
+        "organisation_id": tenant_user.organisation_id,
+        "tenant_id": tenant_user.tenant_id
+    }, 201
 
 
 @auth_bp.route("/forgot-password", methods=["POST"])
@@ -73,12 +259,18 @@ def forgot_password():
     email = email.strip().lower()
 
     user = db.session.execute(
-        select(User).where(User.email == email)
+        select(User).where(
+            User.email == email
+        )
     ).scalar_one_or_none()
 
+    # Do not reveal whether an account exists
     if not user:
         return {
-            "message": "If an account exists for this email, a password reset link will be sent"
+            "message": (
+                "If an account exists for this email, "
+                "a password reset link will be sent"
+            )
         }, 200
 
     raw_token = secrets.token_urlsafe(32)
@@ -90,15 +282,93 @@ def forgot_password():
     user.password_reset_token_hash = token_hash
 
     user.password_reset_expires_at = (
-        datetime.now(timezone.utc) + timedelta(minutes=30)
+        datetime.now(timezone.utc)
+        + timedelta(minutes=30)
     )
 
-    db.session.commit()
+    try:
+        db.session.commit()
 
-    # Email delivery will be added later
+    except SQLAlchemyError:
+        db.session.rollback()
+
+        return {
+            "error": "Password reset could not be started"
+        }, 500
+
+    reset_url = (
+        "http://localhost:5173/reset-password"
+        f"?token={raw_token}"
+    )
+
+    try:
+
+        send_email(
+            to=user.email,
+            subject="Reset your PropertyOS password",
+            html=f"""
+                <div
+                    style="
+                        font-family: Arial, sans-serif;
+                        line-height: 1.6;
+                        max-width: 600px;
+                        margin: 0 auto;
+                    "
+                >
+
+                    <h2>
+                        Reset your PropertyOS password
+                    </h2>
+
+                    <p>
+                        We received a request to reset
+                        your PropertyOS password.
+                    </p>
+
+                    <p>
+                        Click the button below to choose
+                        a new password.
+                    </p>
+
+                    <p>
+                        <a
+                            href="{reset_url}"
+                            style="
+                                display: inline-block;
+                                padding: 12px 20px;
+                                background: #111827;
+                                color: #ffffff;
+                                text-decoration: none;
+                                border-radius: 6px;
+                            "
+                        >
+                            Reset password
+                        </a>
+                    </p>
+
+                    <p>
+                        This link will expire in 30 minutes.
+                    </p>
+
+                    <p>
+                        If you did not request a password reset,
+                        you can safely ignore this email.
+                    </p>
+
+                </div>
+            """
+        )
+
+    except Exception:
+        return {
+            "error": "Password reset email could not be sent"
+        }, 500
 
     return {
-        "message": "If an account exists for this email, a password reset link will be sent"
+        "message": (
+            "If an account exists for this email, "
+            "a password reset link will be sent"
+        )
     }, 200
 
 
@@ -149,13 +419,16 @@ def reset_password():
 
     if (
         not user.password_reset_expires_at
-        or user.password_reset_expires_at <= datetime.now(timezone.utc)
+        or user.password_reset_expires_at
+        <= datetime.now(timezone.utc)
     ):
+
         user.password_reset_token_hash = None
         user.password_reset_expires_at = None
 
         try:
             db.session.commit()
+
         except SQLAlchemyError:
             db.session.rollback()
 
@@ -164,6 +437,7 @@ def reset_password():
         }, 400
 
     try:
+
         user.password_hash = generate_password_hash(
             new_password
         )
@@ -240,7 +514,16 @@ def change_password():
         new_password
     )
 
-    db.session.commit()
+    try:
+
+        db.session.commit()
+
+    except SQLAlchemyError:
+        db.session.rollback()
+
+        return {
+            "error": "Password change could not be completed"
+        }, 500
 
     return {
         "message": "Password changed successfully"
