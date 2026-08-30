@@ -13,7 +13,7 @@ from backend.routes.service_provider_invitations import (
 )
 
 
-from sqlalchemy import text
+
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
@@ -45,7 +45,12 @@ app = flask.Flask(__name__)
 
 CORS(
     app,
-    origins=["http://localhost:5173"],
+    origins=[
+        os.getenv(
+            "FRONTEND_URL",
+            "http://localhost:5173"
+        )
+    ],
     supports_credentials=True
 )
 
@@ -124,13 +129,6 @@ def home():
     return os.getenv("APP_NAME")
 
 
-with app.app_context():
-
-    result = db.session.execute(
-        text("SELECT 1")
-    )
-
-    print(result.scalar())
 
 
 if __name__ == "__main__":
