@@ -1256,7 +1256,7 @@ Rules:
 
             source_url=source_url,
 
-            contact_status="discovered"
+          
         )
 
         candidates.append(
