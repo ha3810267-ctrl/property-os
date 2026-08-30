@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react"
 import {
   Wrench,
@@ -485,6 +486,14 @@ export default function Maintenance() {
     if (!phone) return null
 
     return phone
+  }
+
+  function formatMatchScore(score) {
+    if (score == null) return null
+
+    return Math.round(
+      Number(score) * 100
+    )
   }
 
   const filteredRequests = requests.filter(
@@ -991,8 +1000,9 @@ export default function Maintenance() {
                             {selectedExternalWorker ? (
                               <div className="external-worker-card selected">
                                 <div className="external-worker-main">
-                                  <div className="external-worker-heading">
-                                    <div>
+
+                                  <div className="external-worker-card-header">
+                                    <div className="external-worker-identity">
                                       <strong>
                                         {
                                           selectedExternalWorker.name
@@ -1014,34 +1024,76 @@ export default function Maintenance() {
                                     </span>
                                   </div>
 
-                                  <div className="contractor-details">
-                                    {selectedExternalWorker.location && (
-                                      <span>
-                                        <MapPin
-                                          size={14}
-                                        />
-                                        {
-                                          selectedExternalWorker.location
-                                        }
-                                      </span>
-                                    )}
-
+                                  <div className="contractor-quick-info">
                                     {selectedExternalWorker.rating !=
                                       null && (
-                                      <span>
+                                      <div className="contractor-stat">
                                         <Star
                                           size={14}
                                         />
-                                        {
-                                          selectedExternalWorker.rating
-                                        }
 
-                                        {selectedExternalWorker.review_count !=
-                                          null &&
-                                          ` · ${selectedExternalWorker.review_count} reviews`}
-                                      </span>
+                                        <div>
+                                          <strong>
+                                            {
+                                              selectedExternalWorker.rating
+                                            }
+                                          </strong>
+
+                                          {selectedExternalWorker.review_count !=
+                                            null && (
+                                            <span>
+                                              {
+                                                selectedExternalWorker.review_count
+                                              }{" "}
+                                              reviews
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
                                     )}
 
+                                    {selectedExternalWorker.availability && (
+                                      <div className="contractor-stat">
+                                        <Check
+                                          size={14}
+                                        />
+
+                                        <div>
+                                          <strong>
+                                            Availability
+                                          </strong>
+
+                                          <span>
+                                            {
+                                              selectedExternalWorker.availability
+                                            }
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {selectedExternalWorker.location && (
+                                      <div className="contractor-stat">
+                                        <MapPin
+                                          size={14}
+                                        />
+
+                                        <div>
+                                          <strong>
+                                            Location
+                                          </strong>
+
+                                          <span>
+                                            {
+                                              selectedExternalWorker.location
+                                            }
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="contractor-contact-row">
                                     {formatPhone(
                                       selectedExternalWorker.phone
                                     ) && (
@@ -1049,6 +1101,7 @@ export default function Maintenance() {
                                         <Phone
                                           size={14}
                                         />
+
                                         {
                                           selectedExternalWorker.phone
                                         }
@@ -1084,16 +1137,15 @@ export default function Maintenance() {
                                     <div className="contractor-match">
                                       <div className="contractor-match-top">
                                         <span>
-                                          Match
+                                          AI match score
                                         </span>
 
                                         <strong>
-                                          {Math.round(
-                                            Number(
+                                          {
+                                            formatMatchScore(
                                               selectedExternalWorker.match_score
-                                            ) *
-                                              100
-                                          )}
+                                            )
+                                          }
                                           %
                                         </strong>
                                       </div>
@@ -1101,11 +1153,8 @@ export default function Maintenance() {
                                       <div className="match-bar">
                                         <div
                                           style={{
-                                            width: `${Math.round(
-                                              Number(
-                                                selectedExternalWorker.match_score
-                                              ) *
-                                                100
+                                            width: `${formatMatchScore(
+                                              selectedExternalWorker.match_score
                                             )}%`,
                                           }}
                                         />
@@ -1135,14 +1184,20 @@ export default function Maintenance() {
                                       selectingExternalWorker ===
                                       workerKey
 
+                                    const matchScore =
+                                      formatMatchScore(
+                                        worker.match_score
+                                      )
+
                                     return (
                                       <div
                                         className="external-worker-card"
                                         key={`${request.id}-${worker.provider}-${worker.external_id}`}
                                       >
                                         <div className="external-worker-main">
-                                          <div className="external-worker-heading">
-                                            <div>
+
+                                          <div className="external-worker-card-header">
+                                            <div className="external-worker-identity">
                                               <strong>
                                                 {
                                                   worker.name
@@ -1156,7 +1211,7 @@ export default function Maintenance() {
                                               </span>
                                             </div>
 
-                                            {worker.match_score !=
+                                            {matchScore !=
                                               null && (
                                               <div className="match-score-badge">
                                                 <span>
@@ -1164,48 +1219,91 @@ export default function Maintenance() {
                                                 </span>
 
                                                 <strong>
-                                                  {Math.round(
-                                                    Number(
-                                                      worker.match_score
-                                                    ) *
-                                                      100
-                                                  )}
+                                                  {
+                                                    matchScore
+                                                  }
                                                   %
                                                 </strong>
                                               </div>
                                             )}
                                           </div>
 
-                                          <div className="contractor-details">
-                                            {worker.location && (
-                                              <span>
-                                                <MapPin
-                                                  size={14}
-                                                />
-                                                {
-                                                  worker.location
-                                                }
-                                              </span>
-                                            )}
-
+                                          <div className="contractor-quick-info">
                                             {worker.rating !=
                                               null && (
-                                              <span>
+                                              <div className="contractor-stat">
                                                 <Star
                                                   size={
                                                     14
                                                   }
                                                 />
-                                                {
-                                                  worker.rating
-                                                }
 
-                                                {worker.review_count !=
-                                                  null &&
-                                                  ` · ${worker.review_count} reviews`}
-                                              </span>
+                                                <div>
+                                                  <strong>
+                                                    {
+                                                      worker.rating
+                                                    }
+                                                  </strong>
+
+                                                  {worker.review_count !=
+                                                    null && (
+                                                    <span>
+                                                      {
+                                                        worker.review_count
+                                                      }{" "}
+                                                      reviews
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
                                             )}
 
+                                            {worker.availability && (
+                                              <div className="contractor-stat">
+                                                <Check
+                                                  size={
+                                                    14
+                                                  }
+                                                />
+
+                                                <div>
+                                                  <strong>
+                                                    Availability
+                                                  </strong>
+
+                                                  <span>
+                                                    {
+                                                      worker.availability
+                                                    }
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {worker.location && (
+                                              <div className="contractor-stat">
+                                                <MapPin
+                                                  size={
+                                                    14
+                                                  }
+                                                />
+
+                                                <div>
+                                                  <strong>
+                                                    Location
+                                                  </strong>
+
+                                                  <span>
+                                                    {
+                                                      worker.location
+                                                    }
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          <div className="contractor-contact-row">
                                             {formatPhone(
                                               worker.phone
                                             ) && (
@@ -1215,6 +1313,7 @@ export default function Maintenance() {
                                                     14
                                                   }
                                                 />
+
                                                 {
                                                   worker.phone
                                                 }
@@ -1247,21 +1346,18 @@ export default function Maintenance() {
                                             )}
                                           </div>
 
-                                          {worker.match_score !=
+                                          {matchScore !=
                                             null && (
                                             <div className="contractor-match">
                                               <div className="contractor-match-top">
                                                 <span>
-                                                  Match score
+                                                  AI match score
                                                 </span>
 
                                                 <strong>
-                                                  {Math.round(
-                                                    Number(
-                                                      worker.match_score
-                                                    ) *
-                                                      100
-                                                  )}
+                                                  {
+                                                    matchScore
+                                                  }
                                                   %
                                                 </strong>
                                               </div>
@@ -1269,12 +1365,7 @@ export default function Maintenance() {
                                               <div className="match-bar">
                                                 <div
                                                   style={{
-                                                    width: `${Math.round(
-                                                      Number(
-                                                        worker.match_score
-                                                      ) *
-                                                        100
-                                                    )}%`,
+                                                    width: `${matchScore}%`,
                                                   }}
                                                 />
                                               </div>
@@ -1642,3 +1733,4 @@ export default function Maintenance() {
     </div>
   )
 }
+
