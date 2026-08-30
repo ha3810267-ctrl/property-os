@@ -226,10 +226,10 @@ def get_property_location_for_request(
         return None
 
     location = getattr(
-        property_record,
-        "location",
-        None
-    )
+    property_record,
+    "address",
+    None
+)
 
     if not isinstance(location, str):
         return None
