@@ -1,16 +1,11 @@
+
 import json
 import os
 import re
 import socket
 from html import unescape
-from urllib.parse import (
-    urljoin,
-    urlparse,
-)
-from urllib.request import (
-    Request,
-    urlopen,
-)
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from google import genai
 
@@ -24,19 +19,8 @@ EMAIL_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-CONTACT_PAGE_KEYWORDS = (
-    "contact",
-    "contact-us",
-    "contactus",
-    "get-in-touch",
-    "getintouch",
-    "enquir",
-    "enquir",
-    "about",
-)
-
 MAX_PAGE_BYTES = 2_000_000
-REQUEST_TIMEOUT = 300
+REQUEST_TIMEOUT = 30
 
 USER_AGENT = (
     "Mozilla/5.0 "
@@ -158,12 +142,16 @@ def _safe_int(value):
 
 
 def _normalise_email(value):
-    value = _safe_string(value)
+    value = _safe_string(
+        value
+    )
 
     if not value:
         return None
 
-    value = unescape(value).strip()
+    value = unescape(
+        value
+    ).strip()
 
     value = value.replace(
         "mailto:",
@@ -184,7 +172,6 @@ def _normalise_email(value):
 
     email = match.group(0).lower()
 
-    # Reject obviously broken addresses
     if (
         ".." in email
         or email.startswith(".")
@@ -195,13 +182,61 @@ def _normalise_email(value):
     return email
 
 
+def _normalise_phone(value):
+    """
+    Clean an existing phone number.
+
+    This function NEVER creates or guesses a number.
+    """
+
+    value = _safe_string(
+        value
+    )
+
+    if not value:
+        return None
+
+    value = unescape(
+        value
+    ).strip()
+
+    value = re.sub(
+        r"^(tel:|phone:|telephone:)\s*",
+        "",
+        value,
+        flags=re.IGNORECASE
+    )
+
+    cleaned = re.sub(
+        r"[^\d+().\-\s]",
+        "",
+        value
+    )
+
+    cleaned = re.sub(
+        r"\s+",
+        " ",
+        cleaned
+    ).strip()
+
+    digit_count = len(
+        re.sub(
+            r"\D",
+            "",
+            cleaned
+        )
+    )
+
+    if digit_count < 7:
+        return None
+
+    return cleaned
+
+
 def _is_public_hostname(hostname):
     """
     Prevent website fetching from resolving to local/private
     network addresses.
-
-    This is important because the URL ultimately comes from
-    external search results.
     """
 
     if not hostname:
@@ -224,10 +259,12 @@ def _is_public_hostname(hostname):
         return False
 
     for address in addresses:
+
         ip = address[4][0]
 
         try:
-            ip_obj = socket.inet_pton(
+
+            socket.inet_pton(
                 socket.AF_INET,
                 ip
             )
@@ -255,13 +292,14 @@ def _is_public_hostname(hostname):
                 return False
 
         except OSError:
+
             try:
+
                 ip_obj = socket.inet_pton(
                     socket.AF_INET6,
                     ip
                 )
 
-                # Reject loopback/link-local/private IPv6
                 if (
                     ip_obj == b"\x00" * 15 + b"\x01"
                     or ip.lower().startswith("fe80:")
@@ -277,7 +315,16 @@ def _is_public_hostname(hostname):
 
 
 def _normalise_url(url):
-    url = _safe_string(url)
+    """
+    Validate a URL.
+
+    IMPORTANT:
+    This function does NOT guess or construct URLs.
+    """
+
+    url = _safe_string(
+        url
+    )
 
     if not url:
         return None
@@ -287,7 +334,9 @@ def _normalise_url(url):
     ):
         url = "https://" + url
 
-    parsed = urlparse(url)
+    parsed = urlparse(
+        url
+    )
 
     if parsed.scheme not in {
         "http",
@@ -306,19 +355,110 @@ def _normalise_url(url):
     return url
 
 
+def _is_valid_business_website(url):
+    """
+    Accept ONLY URLs that look like an actual business website.
+
+    Rejects:
+    - images
+    - uploaded assets
+    - PDFs
+    - documents
+    - favicons
+    - obvious static files
+
+    We never replace a rejected URL with a guessed URL.
+    """
+
+    url = _normalise_url(
+        url
+    )
+
+    if not url:
+        return None
+
+    parsed = urlparse(
+        url
+    )
+
+    path = parsed.path.lower()
+
+    rejected_extensions = (
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".svg",
+        ".ico",
+        ".bmp",
+        ".avif",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".zip",
+        ".mp4",
+        ".mp3",
+        ".wav",
+    )
+
+    if path.endswith(
+        rejected_extensions
+    ):
+        print(
+            "[external search] rejected non-website URL: "
+            f"{url!r}",
+            flush=True
+        )
+
+        return None
+
+    rejected_path_fragments = (
+        "/wp-content/uploads/",
+        "/wp-content/themes/",
+        "/wp-content/plugins/",
+        "/assets/",
+        "/static/",
+        "/images/",
+        "/image/",
+        "/img/",
+        "/uploads/",
+        "/media/",
+    )
+
+    if any(
+        fragment in path
+        for fragment in rejected_path_fragments
+    ):
+        print(
+            "[external search] rejected asset URL: "
+            f"{url!r}",
+            flush=True
+        )
+
+        return None
+
+    return url
+
+
 def _fetch_web_page(url):
     """
-    Fetch a public website page.
+    Fetch ONLY the exact verified website URL.
 
-    Returns decoded HTML or None.
+    No contact paths are generated.
     """
 
-    url = _normalise_url(url)
+    url = _is_valid_business_website(
+        url
+    )
 
     if not url:
         return None
 
     try:
+
         request = Request(
             url,
             headers={
@@ -339,8 +479,7 @@ def _fetch_web_page(url):
                 response.headers.get(
                     "Content-Type",
                     ""
-                )
-                .lower()
+                ).lower()
             )
 
             if (
@@ -376,12 +515,10 @@ def _fetch_web_page(url):
 
 def _extract_emails_from_html(html):
     """
-    Extract emails from visible HTML and mailto links.
+    Extract publicly visible emails from the exact
+    website page.
 
-    Handles basic obfuscation such as:
-        name [at] domain.com
-        name (at) domain.com
-        name at domain.com
+    No URLs are guessed.
     """
 
     if not html:
@@ -393,18 +530,22 @@ def _extract_emails_from_html(html):
 
     found = []
 
-    # Normal emails
     for match in EMAIL_PATTERN.findall(
         html
     ):
+
         email = _normalise_email(
             match
         )
 
-        if email and email not in found:
-            found.append(email)
+        if (
+            email
+            and email not in found
+        ):
+            found.append(
+                email
+            )
 
-    # mailto links that may have odd HTML formatting
     mailto_pattern = re.compile(
         r"mailto:\s*([^\"'\s?<>]+)",
         re.IGNORECASE
@@ -413,14 +554,19 @@ def _extract_emails_from_html(html):
     for match in mailto_pattern.findall(
         html
     ):
+
         email = _normalise_email(
             match
         )
 
-        if email and email not in found:
-            found.append(email)
+        if (
+            email
+            and email not in found
+        ):
+            found.append(
+                email
+            )
 
-    # Basic text obfuscation
     text = re.sub(
         r"<[^>]+>",
         " ",
@@ -432,12 +578,14 @@ def _extract_emails_from_html(html):
     )
 
     obfuscated_patterns = [
+
         re.compile(
             r"\b([A-Z0-9._%+\-]+)\s*"
             r"(?:\[at\]|\(at\)|\{at\}|\bat\b)\s*"
             r"([A-Z0-9.\-]+\.[A-Z]{2,})\b",
             re.IGNORECASE
         ),
+
         re.compile(
             r"\b([A-Z0-9._%+\-]+)\s*"
             r"(?:\[at\]|\(at\)|\{at\})\s*"
@@ -452,123 +600,112 @@ def _extract_emails_from_html(html):
             text
         ):
 
-            if isinstance(
-                match,
-                tuple
-            ):
-                email = (
-                    f"{match[0]}@{match[1]}"
-                )
-            else:
-                email = match
+            email = (
+                f"{match[0]}@{match[1]}"
+            )
 
             email = _normalise_email(
                 email
             )
 
-            if email and email not in found:
-                found.append(email)
+            if (
+                email
+                and email not in found
+            ):
+                found.append(
+                    email
+                )
 
     return found
 
 
-def _extract_links(html, base_url):
+def _extract_phones_from_html(html):
     """
-    Find links that look like contact/about/enquiry pages.
+    Extract phone numbers that actually appear on the
+    exact website page.
+
+    This NEVER generates or guesses a number.
     """
 
     if not html:
         return []
 
-    links = []
-
-    pattern = re.compile(
-        r'<a\b[^>]*href\s*=\s*'
-        r'["\']([^"\']+)["\'][^>]*>'
-        r'(.*?)'
-        r'</a>',
-        re.IGNORECASE | re.DOTALL
+    text = re.sub(
+        r"<[^>]+>",
+        " ",
+        html
     )
 
-    for href, anchor_text in pattern.findall(
-        html
-    ):
+    text = unescape(
+        text
+    )
 
-        href = unescape(
-            href
-        ).strip()
+    patterns = [
 
-        anchor_text = re.sub(
-            r"<[^>]+>",
-            " ",
-            anchor_text
-        )
+        re.compile(
+            r"(?:\+44\s?\(?0?\)?|0)"
+            r"(?:\s?\(?\d{2,4}\)?){2,4}"
+            r"(?:\s?\d{2,4})?"
+        ),
 
-        combined = (
-            f"{href} {anchor_text}"
-        ).lower()
+        re.compile(
+            r"\+\d{1,3}"
+            r"(?:[\s().-]?\d){7,14}"
+        ),
+    ]
 
-        if not any(
-            keyword in combined
-            for keyword in CONTACT_PAGE_KEYWORDS
+    found = []
+
+    for pattern in patterns:
+
+        for match in pattern.findall(
+            text
         ):
-            continue
 
-        absolute_url = urljoin(
-            base_url,
-            href
-        )
-
-        absolute_url = _normalise_url(
-            absolute_url
-        )
-
-        if not absolute_url:
-            continue
-
-        base_host = (
-            urlparse(base_url).hostname
-            or ""
-        ).lower()
-
-        link_host = (
-            urlparse(absolute_url).hostname
-            or ""
-        ).lower()
-
-        # Only follow links on the same domain
-        if link_host != base_host:
-            continue
-
-        if absolute_url not in links:
-            links.append(
-                absolute_url
+            phone = _normalise_phone(
+                match
             )
 
-    return links[:5]
+            if (
+                phone
+                and phone not in found
+            ):
+                found.append(
+                    phone
+                )
+
+    return found
 
 
-def _find_email_on_website(
-    website,
-    business_name=None
+def _verify_website_details(
+    provider,
+    website
 ):
     """
-    Search a contractor's public website for a business
-    email.
+    Check the exact website Gemini returned.
 
-    First checks the supplied website, then likely
-    Contact/About/Enquiry pages.
+    We do NOT try:
+    /contact
+    /contact-us
+    /about
+    /enquiries
+    etc.
     """
 
-    website = _normalise_url(
+    result = {
+        "email": None,
+        "phone": None,
+    }
+
+    website = _is_valid_business_website(
         website
     )
 
     if not website:
-        return None
+        return result
 
     print(
-        "[external search] checking website for email: "
+        "[external search] verifying exact website: "
         f"{website!r}",
         flush=True
     )
@@ -578,166 +715,39 @@ def _find_email_on_website(
     )
 
     if not html:
-        return None
+        return result
 
     emails = _extract_emails_from_html(
         html
     )
 
+    phones = _extract_phones_from_html(
+        html
+    )
+
     if emails:
 
+        result["email"] = emails[0]
+
         print(
-            "[external search] email found on homepage: "
-            f"{emails[0]!r}",
+            "[external search] verified website email: "
+            f"name={provider.get('name')!r}, "
+            f"email={emails[0]!r}",
             flush=True
         )
 
-        return emails[0]
+    if phones:
 
-    contact_links = _extract_links(
-        html,
-        website
-    )
-
-    for contact_url in contact_links:
+        result["phone"] = phones[0]
 
         print(
-            "[external search] checking contact page: "
-            f"{contact_url!r}",
+            "[external search] verified website phone: "
+            f"name={provider.get('name')!r}, "
+            f"phone={phones[0]!r}",
             flush=True
         )
 
-        contact_html = _fetch_web_page(
-            contact_url
-        )
-
-        if not contact_html:
-            continue
-
-        emails = _extract_emails_from_html(
-            contact_html
-        )
-
-        if emails:
-
-            print(
-                "[external search] email found on contact page: "
-                f"{emails[0]!r}",
-                flush=True
-            )
-
-            return emails[0]
-
-    # Some websites do not expose a clickable contact
-    # link in their HTML. Try common paths directly.
-    parsed = urlparse(
-        website
-    )
-
-    base = (
-        f"{parsed.scheme}://"
-        f"{parsed.netloc}"
-    )
-
-    common_paths = [
-        "/contact",
-        "/contact-us",
-        "/contactus",
-        "/get-in-touch",
-        "/enquiries",
-        "/about",
-    ]
-
-    tried = set(
-        contact_links
-    )
-
-    for path in common_paths:
-
-        contact_url = _normalise_url(
-            urljoin(
-                base + "/",
-                path.lstrip("/")
-            )
-        )
-
-        if not contact_url:
-            continue
-
-        if contact_url in tried:
-            continue
-
-        tried.add(
-            contact_url
-        )
-
-        contact_html = _fetch_web_page(
-            contact_url
-        )
-
-        if not contact_html:
-            continue
-
-        emails = _extract_emails_from_html(
-            contact_html
-        )
-
-        if emails:
-
-            print(
-                "[external search] email found on common "
-                f"contact path: {emails[0]!r}",
-                flush=True
-            )
-
-            return emails[0]
-
-    print(
-        "[external search] no public email found on website: "
-        f"{website!r}",
-        flush=True
-    )
-
-    return None
-
-
-def _discover_email(
-    provider,
-    website,
-):
-    """
-    Determine the contractor email.
-
-    Priority:
-
-    1. Email found directly by Gemini
-    2. Email extracted from contractor website
-    """
-
-    gemini_email = _normalise_email(
-        provider.get("email")
-    )
-
-    if gemini_email:
-
-        print(
-            "[external search] using Gemini verified email "
-            f"for {provider.get('name')!r}: "
-            f"{gemini_email!r}",
-            flush=True
-        )
-
-        return gemini_email
-
-    website_email = _find_email_on_website(
-        website=website,
-        business_name=provider.get("name")
-    )
-
-    if website_email:
-        return website_email
-
-    return None
+    return result
 
 
 def search_external_workers(
@@ -746,20 +756,18 @@ def search_external_workers(
     location=None
 ):
     """
-    Discover real external service providers using Gemini
+    Discover real external contractors using Gemini
     with Google Search grounding.
 
-    Gemini handles contractor discovery and ranking.
+    Gemini provides the candidate information.
 
-    After discovery, the backend additionally checks each
-    contractor's public website and contact pages for a
-    publicly listed email address.
-
-    Returns new ExternalWorkerCandidate objects.
-
-    Candidates are not selected or contacted here.
-    Ranking and outreach are handled by the maintenance
-    request workflow.
+    The backend:
+    - validates the returned website
+    - rejects image/static asset URLs
+    - verifies the exact returned website
+    - extracts public phone/email when present
+    - never invents missing information
+    - never constructs contact URLs
     """
 
     if not maintenance_request_id:
@@ -790,76 +798,92 @@ def search_external_workers(
     )
 
     prompt = f"""
-You are a service-provider research assistant for a
-property maintenance platform.
+Find real businesses that provide these property
+maintenance services:
 
-Find real external businesses that could carry out
-property maintenance work.
+Trades: {trades_text}
+Location: {location_text}
 
-Required trades:
-{trades_text}
-
-Target location:
-{location_text}
-
-Use Google Search to research current public web
+Use Google Search grounding and current public web
 information.
 
-Return ONLY a JSON object.
-
-Required structure:
+Return ONLY JSON in this format:
 
 {{
-    "providers": [
-        {{
-            "name": "Business display name",
-            "trade": "matching trade",
-            "location": "business location",
-            "rating": 4.8,
-            "review_count": 120,
-            "availability": "Available soon",
-            "website": "https://example.com",
-            "phone": "01234567890",
-            "email": "hello@example.com",
-            "source_url": "https://example.com/source"
-        }}
-    ]
+  "providers": [
+    {{
+      "name": "Business name",
+      "trade": "trade",
+      "location": "verified location or null",
+      "rating": 4.8,
+      "review_count": 100,
+      "availability": null,
+      "website": "https://business-homepage.co.uk",
+      "phone": "01234567890",
+      "email": "info@business.co.uk",
+      "source_url": "https://real-source-page.co.uk"
+    }}
+  ]
 }}
 
 Rules:
 
-1. Only include real businesses supported by web
-   search evidence.
+1. Only return real businesses supported by search
+   evidence.
 
 2. Never invent a business.
 
-3. Never invent contact information.
+3. Never guess any field.
 
-4. Never invent ratings or review counts.
+4. If a field cannot be verified, return null.
 
-5. If a value cannot be verified, return null.
+5. The website must be the actual business homepage.
 
-6. Only return businesses relevant to the requested
-   trades.
+6. The website must NOT be an image.
 
-7. Prefer businesses close to the target location.
+7. The website must NOT be a file or uploaded asset.
 
-8. Include up to 10 strong candidates.
+8. Never return URLs ending in .jpg .jpeg .png .webp
+   .gif .svg .pdf or similar file extensions.
 
-9. A business may appear only once.
+9. Never return URLs containing /wp-content/uploads/.
 
-10. "trade" must correspond to one of the requested
+10. Do not construct a website from the business name.
+
+11. Do not construct contact URLs.
+
+12. The phone number must be an actual publicly listed
+    business phone number.
+
+13. The email must be an actual publicly listed
+    business email.
+
+14. The rating and review count must be supported by
+    search evidence.
+
+15. The location must be supported by search evidence.
+
+16. source_url must be an actual URL from the search
+    evidence.
+
+17. Prefer the official business website when available.
+
+18. Only return businesses relevant to the requested
     trades.
 
-11. Use publicly available business contact details
-    where available.
+19. Prefer businesses near the target location.
 
-12. source_url should identify the web source used
-    to support the business information.
+20. Return up to 10 strong candidates.
 
-13. Do not return markdown.
+21. A business must appear only once.
 
-14. Do not return explanations outside the JSON.
+22. Accuracy is more important than completeness.
+
+23. Missing information must be null.
+
+24. Do not output explanations.
+
+25. Do not output markdown.
 """
 
     try:
@@ -886,54 +910,64 @@ Rules:
                             "items": {
                                 "type": "object",
                                 "properties": {
+
                                     "name": {
                                         "type": "string"
                                     },
+
                                     "trade": {
                                         "type": "string"
                                     },
+
                                     "location": {
                                         "type": [
                                             "string",
                                             "null"
                                         ]
                                     },
+
                                     "rating": {
                                         "type": [
                                             "number",
                                             "null"
                                         ]
                                     },
+
                                     "review_count": {
                                         "type": [
                                             "integer",
                                             "null"
                                         ]
                                     },
+
                                     "availability": {
                                         "type": [
                                             "string",
                                             "null"
                                         ]
                                     },
+
                                     "website": {
                                         "type": [
                                             "string",
                                             "null"
                                         ]
                                     },
+
                                     "phone": {
                                         "type": [
                                             "string",
                                             "null"
                                         ]
                                     },
+
                                     "email": {
                                         "type": [
                                             "string",
                                             "null"
                                         ]
                                     },
+
                                     "source_url": {
                                         "type": [
                                             "string",
@@ -941,6 +975,7 @@ Rules:
                                         ]
                                     }
                                 },
+
                                 "required": [
                                     "name",
                                     "trade"
@@ -948,11 +983,13 @@ Rules:
                             }
                         }
                     },
+
                     "required": [
                         "providers"
                     ]
                 }
             },
+
             generation_config={
                 "thinking_level": "low",
                 "max_output_tokens": 8192
@@ -961,16 +998,27 @@ Rules:
 
     except Exception as exc:
 
+        print(
+            "[external search] Gemini discovery error: "
+            f"{exc!r}",
+            flush=True
+        )
+
         raise RuntimeError(
             f"Gemini provider search failed: {exc}"
         ) from exc
 
     try:
+
         response_debug = response.model_dump(
             exclude_none=True
         )
+
     except AttributeError:
-        response_debug = repr(response)
+
+        response_debug = repr(
+            response
+        )
 
     print(
         "[external search] Gemini structured response: "
@@ -1025,13 +1073,6 @@ Rules:
         data,
         dict
     ):
-
-        print(
-            "[external search] Gemini JSON root was not an object: "
-            f"{type(data).__name__}",
-            flush=True
-        )
-
         return []
 
     providers = data.get(
@@ -1043,13 +1084,6 @@ Rules:
         providers,
         list
     ):
-
-        print(
-            "[external search] Gemini 'providers' was not a list: "
-            f"{type(providers).__name__}",
-            flush=True
-        )
-
         return []
 
     print(
@@ -1068,13 +1102,6 @@ Rules:
             provider,
             dict
         ):
-
-            print(
-                "[external search] rejected provider: not an object: "
-                f"{provider!r}",
-                flush=True
-            )
-
             continue
 
         name = _safe_string(
@@ -1082,13 +1109,6 @@ Rules:
         )
 
         if not name:
-
-            print(
-                "[external search] rejected provider: missing name: "
-                f"{provider!r}",
-                flush=True
-            )
-
             continue
 
         trade = _normalise_trade(
@@ -1096,32 +1116,18 @@ Rules:
         )
 
         if not trade:
-
-            print(
-                "[external search] rejected provider: missing trade: "
-                f"name={name!r}",
-                flush=True
-            )
-
             continue
 
         if trade not in trade_names:
 
             print(
-                "[external search] rejected provider: trade mismatch: "
-                f"name={name!r}, trade={trade!r}, "
-                f"required={trade_names!r}",
+                "[external search] rejected provider: "
+                f"trade mismatch name={name!r}, "
+                f"trade={trade!r}",
                 flush=True
             )
 
             continue
-
-        location_value = _safe_string(
-            provider.get("location")
-        )
-
-        if not location_value:
-            location_value = location_text
 
         business_key = (
             name.lower(),
@@ -1131,8 +1137,8 @@ Rules:
         if business_key in seen_businesses:
 
             print(
-                "[external search] rejected provider: duplicate in Gemini "
-                f"response: name={name!r}, trade={trade!r}",
+                "[external search] rejected duplicate: "
+                f"{name!r}",
                 flush=True
             )
 
@@ -1140,6 +1146,10 @@ Rules:
 
         seen_businesses.add(
             business_key
+        )
+
+        location_value = _safe_string(
+            provider.get("location")
         )
 
         rating = _safe_float(
@@ -1154,43 +1164,62 @@ Rules:
             provider.get("availability")
         )
 
-        website = _safe_string(
+        # -------------------------------------------------
+        # WEBSITE
+        #
+        # This rejects image URLs and static assets.
+        # It never guesses a replacement.
+        # -------------------------------------------------
+
+        website = _is_valid_business_website(
             provider.get("website")
         )
 
-        phone = _safe_string(
+        # -------------------------------------------------
+        # CONTACT DETAILS
+        #
+        # Start with Gemini's values only.
+        # Nothing is generated.
+        # -------------------------------------------------
+
+        phone = _normalise_phone(
             provider.get("phone")
         )
 
-        # -------------------------------------------------
-        # NEW:
-        # Search the contractor website for an email.
-        # -------------------------------------------------
-
-        email = _discover_email(
-            provider=provider,
-            website=website
+        email = _normalise_email(
+            provider.get("email")
         )
 
-        source_url = _safe_string(
-            provider.get("source_url")
+        # -------------------------------------------------
+        # VERIFY EXACT WEBSITE
+        #
+        # No /contact
+        # No /about
+        # No guessed paths.
+        # -------------------------------------------------
+
+        if website:
+
+            verified = _verify_website_details(
+                provider=provider,
+                website=website
+            )
+
+            if verified.get("phone"):
+                phone = verified[
+                    "phone"
+                ]
+
+            if verified.get("email"):
+                email = verified[
+                    "email"
+                ]
+
+        source_url = _normalise_url(
+            provider.get(
+                "source_url"
+            )
         )
-
-        if email:
-
-            print(
-                "[external search] final contractor email: "
-                f"name={name!r}, email={email!r}",
-                flush=True
-            )
-
-        else:
-
-            print(
-                "[external search] no public email found: "
-                f"name={name!r}",
-                flush=True
-            )
 
         external_id = (
             f"gemini-web-"
@@ -1202,23 +1231,47 @@ Rules:
             maintenance_request_id=(
                 maintenance_request_id
             ),
+
             provider="gemini_web_search",
+
             external_id=external_id,
+
             name=name,
+
             trade=trade,
+
             location=location_value,
+
             rating=rating,
+
             review_count=review_count,
+
             availability=availability,
+
             website=website,
+
             phone=phone,
+
             email=email,
+
             source_url=source_url,
+
             contact_status="discovered"
         )
 
         candidates.append(
             candidate
+        )
+
+        print(
+            "[external search] candidate: "
+            f"name={name!r}, "
+            f"trade={trade!r}, "
+            f"website={website!r}, "
+            f"phone={phone!r}, "
+            f"email={email!r}, "
+            f"source={source_url!r}",
+            flush=True
         )
 
     print(

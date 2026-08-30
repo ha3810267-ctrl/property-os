@@ -1,6 +1,5 @@
 
 from datetime import datetime, timezone
-from typing import Iterable
 
 from backend.models.external_worker_candidate import (
     ExternalWorkerCandidate
@@ -11,24 +10,18 @@ from backend.models.external_worker_candidate import (
 # RANKING WEIGHTS
 # ============================================================
 
-# Trade relevance is important because the contractor
-# must actually be suitable for the maintenance job.
+# Trade relevance
+TRADE_WEIGHT = 0.30
 
-TRADE_WEIGHT = 0.20
+# Contractor reputation
+RATING_WEIGHT = 0.25
+REVIEWS_WEIGHT = 0.15
 
-# Contractor reputation.
+# Availability
+AVAILABILITY_WEIGHT = 0.25
 
-RATING_WEIGHT = 0.20
-REVIEWS_WEIGHT = 0.10
-
-# Availability is important before and after outreach.
-
-AVAILABILITY_WEIGHT = 0.20
-
-# Contractor response information becomes increasingly
-# important once responses start arriving.
-
-RESPONSE_WEIGHT = 0.30
+# Small price signal
+PRICE_WEIGHT = 0.05
 
 
 # ============================================================
@@ -123,12 +116,10 @@ def _trade_score(
         return 0.5
 
     # Exact match
-
     if candidate_trade in normalised_trades:
         return 1.0
 
     # Partial match
-
     for trade in normalised_trades:
 
         if (
@@ -138,7 +129,6 @@ def _trade_score(
             return 0.9
 
     # No obvious trade match
-
     return 0.2
 
 
@@ -161,6 +151,7 @@ def _rating_score(
         )
     )
 
+    # Missing rating is neutral
     if rating <= 0:
         return 0.5
 
@@ -179,9 +170,8 @@ def _review_score(
     """
     Give contractors with more reviews more confidence.
 
-    This is deliberately capped so a contractor with
-    thousands of reviews does not completely dominate
-    contractors with strong ratings and availability.
+    The score is capped so extremely large review counts
+    do not completely dominate the ranking.
     """
 
     reviews = _safe_float(
@@ -208,18 +198,13 @@ def _availability_score(
     candidate
 ):
     """
-    Estimate availability using the information stored
-    on the candidate.
+    Estimate availability using information actually present
+    on the discovered contractor.
 
-    This works before and after contractor outreach.
+    Discovery alone does NOT mean the contractor is available.
 
-    Important:
-
-    We do NOT assume that a contractor is available just
-    because they were discovered.
-
-    Discovery therefore receives a neutral score unless
-    the source supplied meaningful availability information.
+    If no availability information exists, the contractor
+    receives a neutral score.
     """
 
     availability = str(
@@ -229,58 +214,6 @@ def _availability_score(
             ""
         ) or ""
     ).strip().lower()
-
-    contact_status = str(
-        getattr(
-            candidate,
-            "contact_status",
-            ""
-        ) or ""
-    ).strip().lower()
-
-    response_quality = str(
-        getattr(
-            candidate,
-            "response_quality",
-            ""
-        ) or ""
-    ).strip().lower()
-
-    # --------------------------------------------------------
-    # Explicit response indicating unavailability
-    # --------------------------------------------------------
-
-    if (
-        contact_status == "unavailable"
-        or response_quality == "unavailable"
-    ):
-        return 0.0
-
-    # --------------------------------------------------------
-    # Contractor has responded but availability is unclear
-    # --------------------------------------------------------
-
-    if contact_status == "response_received":
-
-        if response_quality == "good":
-            return 0.85
-
-        if response_quality == "poor":
-            return 0.55
-
-        return 0.60
-
-    # --------------------------------------------------------
-    # Contractor has been contacted but has not responded
-    # --------------------------------------------------------
-
-    if contact_status in {
-        "contacted",
-        "email_sent"
-    }:
-
-        # We do not know whether they can take the job.
-        return 0.40
 
     # --------------------------------------------------------
     # No availability information
@@ -353,91 +286,8 @@ def _availability_score(
     ):
         return 0.85
 
+    # Unknown wording
     return 0.50
-
-
-# ============================================================
-# RESPONSE SCORE
-# ============================================================
-
-def _response_score(
-    candidate
-):
-    """
-    Score the usefulness of the contractor's response.
-
-    This is the main dynamic component of the ranking.
-
-    A contractor who provides a clear response and can
-    take the job receives a strong score.
-
-    A contractor who explicitly cannot take the job
-    receives zero.
-
-    Contractors who have not responded retain a lower
-    neutral score.
-    """
-
-    response_received = getattr(
-        candidate,
-        "response_received_at",
-        None
-    )
-
-    response_quality = str(
-        getattr(
-            candidate,
-            "response_quality",
-            ""
-        ) or ""
-    ).strip().lower()
-
-    contact_status = str(
-        getattr(
-            candidate,
-            "contact_status",
-            ""
-        ) or ""
-    ).strip().lower()
-
-    # --------------------------------------------------------
-    # Explicitly unavailable
-    # --------------------------------------------------------
-
-    if (
-        contact_status == "unavailable"
-        or response_quality == "unavailable"
-    ):
-        return 0.0
-
-    # --------------------------------------------------------
-    # No response yet
-    # --------------------------------------------------------
-
-    if response_received is None:
-
-        if contact_status in {
-            "contacted",
-            "email_sent"
-        }:
-            return 0.30
-
-        return 0.20
-
-    # --------------------------------------------------------
-    # Response received
-    # --------------------------------------------------------
-
-    if response_quality == "good":
-        return 1.0
-
-    if response_quality == "poor":
-        return 0.45
-
-    if response_quality == "unclear":
-        return 0.60
-
-    return 0.55
 
 
 # ============================================================
@@ -448,19 +298,9 @@ def _price_score(
     candidate
 ):
     """
-    Price is deliberately NOT a major ranking factor.
+    Give a small ranking signal to contractors with a quote.
 
-    A cheap contractor should not automatically beat a
-    more suitable contractor.
-
-    For now:
-
-        price present -> neutral positive signal
-        price missing  -> neutral
-
-    A more advanced version can compare contractor quotes
-    against the distribution of quotes received for the
-    same maintenance request.
+    Price is intentionally not a major ranking factor.
     """
 
     quoted_price = getattr(
@@ -480,6 +320,9 @@ def _price_score(
     if quoted_price <= 0:
         return 0.5
 
+    # A known quote receives a small positive signal.
+    # Actual price comparison can be added later when
+    # multiple quotes exist for the same request.
     return 0.60
 
 
@@ -496,17 +339,15 @@ def calculate_external_worker_score(
 
     Score is between 0 and 1.
 
-    Ranking considers:
+    Ranking considers ONLY:
 
         trade relevance
         contractor rating
         review confidence
         availability
-        contractor response
         quote information
 
-    Contractor response information dynamically affects
-    the ranking after outreach.
+    There is deliberately no contact or response logic here.
     """
 
     required_trades = (
@@ -532,65 +373,49 @@ def calculate_external_worker_score(
         )
     )
 
-    response_score = _response_score(
-        candidate
-    )
-
     price_score = _price_score(
         candidate
     )
-
-    # ========================================================
-    # BASE SCORE
-    # ========================================================
 
     score = (
         trade_score * TRADE_WEIGHT
         + rating_score * RATING_WEIGHT
         + review_score * REVIEWS_WEIGHT
         + availability_score * AVAILABILITY_WEIGHT
-        + response_score * RESPONSE_WEIGHT
+        + price_score * PRICE_WEIGHT
     )
 
-    # Price currently acts only as a very small tie-break
-    # rather than a major factor.
+    # --------------------------------------------------------
+    # Unavailable contractors
+    # --------------------------------------------------------
 
-    score += (
-        (price_score - 0.5)
-        * 0.05
+    availability = str(
+        getattr(
+            candidate,
+            "availability",
+            ""
+        ) or ""
+    ).strip().lower()
+
+    unavailable_terms = (
+        "unavailable",
+        "not available",
+        "fully booked",
+        "booked up",
+        "no availability",
+        "not taking work",
+        "not taking jobs"
     )
 
-    # ========================================================
-    # UNAVAILABLE CONTRACTORS
-    # ========================================================
-
-    if (
-        getattr(
-            candidate,
-            "contact_status",
-            None
-        )
-        == "unavailable"
+    if any(
+        term in availability
+        for term in unavailable_terms
     ):
-
         score *= 0.10
 
-    if (
-        getattr(
-            candidate,
-            "response_quality",
-            None
-        )
-        == "unavailable"
-    ):
-
-        score *= 0.10
-
-    score = _clamp(
+    return _clamp(
         score
     )
-
-    return score
 
 
 # ============================================================
@@ -605,7 +430,8 @@ def build_match_reason(
     """
     Build a human-readable explanation for the ranking.
 
-    This explanation is returned to the frontend.
+    This function contains NO contractor response or
+    contact-status messaging.
     """
 
     required_trades = (
@@ -627,10 +453,6 @@ def build_match_reason(
         _availability_score(
             candidate
         )
-    )
-
-    response_score = _response_score(
-        candidate
     )
 
     # --------------------------------------------------------
@@ -688,28 +510,6 @@ def build_match_reason(
         )
 
     # --------------------------------------------------------
-    # Response
-    # --------------------------------------------------------
-
-    if response_score >= 0.90:
-
-        reasons.append(
-            "clear contractor response"
-        )
-
-    elif response_score >= 0.60:
-
-        reasons.append(
-            "contractor response received"
-        )
-
-    elif response_score <= 0.30:
-
-        reasons.append(
-            "awaiting contractor response"
-        )
-
-    # --------------------------------------------------------
     # Quote
     # --------------------------------------------------------
 
@@ -721,36 +521,6 @@ def build_match_reason(
 
         reasons.append(
             "quote provided"
-        )
-
-    # --------------------------------------------------------
-    # Response quality
-    # --------------------------------------------------------
-
-    response_quality = str(
-        getattr(
-            candidate,
-            "response_quality",
-            ""
-        ) or ""
-    ).lower()
-
-    if response_quality == "good":
-
-        reasons.append(
-            "useful response information"
-        )
-
-    elif response_quality == "poor":
-
-        reasons.append(
-            "limited response information"
-        )
-
-    elif response_quality == "unavailable":
-
-        reasons.append(
-            "contractor cannot take the job"
         )
 
     # --------------------------------------------------------
@@ -778,23 +548,21 @@ def rank_external_workers(
     required_trades,
     candidates
 ):
-
     """
     Rank all external contractor candidates.
 
-    The function updates:
+    Updates:
 
         match_score
         match_reason
         ranking_updated_at
         updated_at
 
-    and returns candidates sorted from strongest match
-    to weakest match.
+    The function NEVER contacts contractors.
 
-    IMPORTANT:
+    The function NEVER sends or receives messages.
 
-    This function NEVER selects a contractor.
+    The function NEVER selects a contractor.
 
     Selection remains a manager action.
     """
@@ -874,13 +642,8 @@ def rank_external_workers(
     ):
 
         return (
-            # Available/response candidates first
+            # Availability first
             _availability_score(
-                candidate
-            ),
-
-            # Actual contractor response next
-            _response_score(
                 candidate
             ),
 
@@ -891,14 +654,20 @@ def rank_external_workers(
                 0
             ),
 
-            # Rating as final tie-break
+            # Rating
             _rating_score(
                 candidate
             ),
 
-            # Reviews as final tie-break
+            # Reviews
             _review_score(
                 candidate
+            ),
+
+            # Trade
+            _trade_score(
+                candidate,
+                required_trades
             )
         )
 

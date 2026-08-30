@@ -9,9 +9,9 @@ import {
   Trash2,
   ExternalLink,
   Check,
-  Mail,
-  Clock,
-  PoundSterling,
+  Phone,
+  MapPin,
+  Star,
 } from "lucide-react"
 import { apiRequest } from "../services/api"
 
@@ -52,9 +52,6 @@ export default function Maintenance() {
     useState(null)
 
   const [selectingExternalWorker, setSelectingExternalWorker] =
-    useState(null)
-
-  const [contactingExternalWorker, setContactingExternalWorker] =
     useState(null)
 
   async function loadData() {
@@ -419,42 +416,6 @@ export default function Maintenance() {
     }
   }
 
-  async function contactExternalWorker(
-    requestId,
-    candidateId
-  ) {
-    const key = `${requestId}-${candidateId}`
-
-    try {
-      setContactingExternalWorker(key)
-      setError("")
-
-      const updated = await apiRequest(
-        `/maintenance-requests/${requestId}/external-workers/${candidateId}/contact`,
-        {
-          method: "POST",
-        }
-      )
-
-      setRequests((current) =>
-        current.map((request) =>
-          request.id === requestId
-            ? updated
-            : request
-        )
-      )
-    } catch (error) {
-      console.error(error)
-
-      setError(
-        error.message ||
-          "Could not contact external worker"
-      )
-    } finally {
-      setContactingExternalWorker(null)
-    }
-  }
-
   function getTenant(tenantId) {
     return tenants.find(
       (tenant) => tenant.id === tenantId
@@ -520,75 +481,10 @@ export default function Maintenance() {
       )
   }
 
-  function formatContactStatus(status) {
-    if (!status) return "Not contacted"
+  function formatPhone(phone) {
+    if (!phone) return null
 
-    if (status === "email_sent") {
-      return "Email sent"
-    }
-
-    if (status === "contacted") {
-      return "Contacted"
-    }
-
-    if (status === "email_failed") {
-      return "Email failed"
-    }
-
-    if (status === "no_email") {
-      return "No email available"
-    }
-
-    if (
-      status === "response_received" ||
-      status === "responded"
-    ) {
-      return "Response received"
-    }
-
-    return status.replaceAll("_", " ")
-  }
-
-  function formatResponseQuality(
-    quality
-  ) {
-    if (!quality) return null
-
-    if (quality === "good") {
-      return "Good response"
-    }
-
-    if (quality === "poor") {
-      return "Poor response"
-    }
-
-    if (quality === "unavailable") {
-      return "Unavailable"
-    }
-
-    if (quality === "unclear") {
-      return "Unclear response"
-    }
-
-    return quality
-  }
-
-  function formatPrice(price) {
-    if (
-      price === null ||
-      price === undefined ||
-      price === ""
-    ) {
-      return null
-    }
-
-    const numericPrice = Number(price)
-
-    if (Number.isNaN(numericPrice)) {
-      return null
-    }
-
-    return `£${numericPrice.toFixed(2)}`
+    return phone
   }
 
   const filteredRequests = requests.filter(
@@ -819,9 +715,6 @@ export default function Maintenance() {
                       true
                   )
 
-                const hasInternalAssignment =
-                  assignments.length > 0
-
                 const isSearchingExternal =
                   searchingExternalWorker ===
                   request.id
@@ -874,667 +767,552 @@ export default function Maintenance() {
                           </span>
                         </div>
 
-                        <div className="assignment-row">
-                          <div className="assignment-info">
-                            <UserRound
-                              size={15}
-                            />
-
-                            {assignments.length ===
-                            0 ? (
-                              <span>
-                                Unassigned
-                              </span>
-                            ) : (
-                              <div className="assignment-list">
-                                {assignments.map(
-                                  (
-                                    assignment
-                                  ) => {
-                                    const assignmentKey =
-                                      `${request.id}-${assignment.user_id}`
-
-                                    return (
-                                      <div
-                                        className="assignment-item"
-                                        key={
-                                          assignmentKey
-                                        }
-                                      >
-                                        <div>
-                                          <span>
-                                            {getWorkerName(
-                                              assignment
-                                            )}
-                                          </span>
-
-                                          {assignment.assignment_method ===
-                                            "ai" && (
-                                            <span className="ai-assignment">
-                                              <Sparkles
-                                                size={
-                                                  13
-                                                }
-                                              />
-                                              AI assigned
-                                              {assignment.score !=
-                                                null &&
-                                                ` · ${Math.round(
-                                                  assignment.score *
-                                                    100
-                                                )}%`}
-                                            </span>
-                                          )}
-
-                                          {assignment.assignment_method ===
-                                            "manual" && (
-                                            <span className="ai-assignment">
-                                              Manual
-                                            </span>
-                                          )}
-                                        </div>
-
-                                        <button
-                                          type="button"
-                                          className="property-action delete"
-                                          disabled={
-                                            removingAssignment ===
-                                            assignmentKey
-                                          }
-                                          onClick={() =>
-                                            removeAssignment(
-                                              request.id,
-                                              assignment.user_id
-                                            )
-                                          }
-                                          title="Remove worker"
-                                        >
-                                          <X
-                                            size={
-                                              14
-                                            }
-                                          />
-                                        </button>
-                                      </div>
-                                    )
-                                  }
-                                )}
+                        <div className="assignment-section">
+                          <div className="assignment-section-header">
+                            <div>
+                              <div className="section-label">
+                                Internal assignment
                               </div>
-                            )}
-                          </div>
-
-                          <select
-                            id={`worker-${request.id}`}
-                            name={`worker-${request.id}`}
-                            value=""
-                            disabled={
-                              assigningId ===
-                                request.id ||
-                              availableWorkers.length ===
-                                0
-                            }
-                            onChange={(event) =>
-                              assignWorker(
-                                request.id,
-                                event.target
-                                  .value
-                              )
-                            }
-                          >
-                            <option value="">
-                              {availableWorkers.length ===
-                              0
-                                ? "All workers assigned"
-                                : "Add worker"}
-                            </option>
-
-                            {availableWorkers.map(
-                              (worker) => (
-                                <option
-                                  key={
-                                    worker.id
-                                  }
-                                  value={
-                                    worker.id
-                                  }
-                                >
-                                  {
-                                    worker.name
-                                  }
-                                </option>
-                              )
-                            )}
-                          </select>
-                        </div>
-
-                        {hasInternalAssignment &&
-                          !selectedExternalWorker && (
-                            <div className="external-worker-search">
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() =>
-                                  searchExternalWorkers(
-                                    request.id
-                                  )
-                                }
-                                disabled={
-                                  isSearchingExternal
-                                }
-                              >
-                                <ExternalLink
-                                  size={16}
-                                />
-
-                                {isSearchingExternal
-                                  ? "Finding external workers..."
-                                  : "Need an external worker?"}
-                              </button>
 
                               <p>
-                                Keep your current
-                                worker assigned and
-                                search for an external
-                                provider as well
+                                Workers currently assigned
+                                to this request
                               </p>
                             </div>
-                          )}
 
-                        {!hasInternalAssignment &&
-                          externalWorkers.length ===
-                            0 && (
-                            <div className="external-worker-search">
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() =>
-                                  searchExternalWorkers(
-                                    request.id
-                                  )
-                                }
-                                disabled={
-                                  isSearchingExternal
-                                }
-                              >
-                                <ExternalLink
-                                  size={16}
-                                />
+                            <div className="assignment-count">
+                              <UserRound
+                                size={14}
+                              />
 
-                                {isSearchingExternal
-                                  ? "Finding external workers..."
-                                  : "Search external workers"}
-                              </button>
+                              {assignments.length}{" "}
+                              {assignments.length === 1
+                                ? "worker"
+                                : "workers"}
                             </div>
-                          )}
+                          </div>
+
+                          <div className="assignment-row">
+                            <div className="assignment-info">
+                              {assignments.length ===
+                              0 ? (
+                                <span className="assignment-empty">
+                                  Unassigned
+                                </span>
+                              ) : (
+                                <div className="assignment-list">
+                                  {assignments.map(
+                                    (
+                                      assignment
+                                    ) => {
+                                      const assignmentKey =
+                                        `${request.id}-${assignment.user_id}`
+
+                                      return (
+                                        <div
+                                          className="assignment-item"
+                                          key={
+                                            assignmentKey
+                                          }
+                                        >
+                                          <div className="assignment-worker">
+                                            <strong>
+                                              {getWorkerName(
+                                                assignment
+                                              )}
+                                            </strong>
+
+                                            <div className="assignment-type">
+                                              {assignment.assignment_method ===
+                                              "ai" ? (
+                                                <>
+                                                  <Sparkles
+                                                    size={
+                                                      13
+                                                    }
+                                                  />
+                                                  AI assigned
+                                                  {assignment.score !=
+                                                    null &&
+                                                    ` · ${Math.round(
+                                                      assignment.score *
+                                                        100
+                                                    )}% match`}
+                                                </>
+                                              ) : (
+                                                <>
+                                                  Manual assignment
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            className="property-action delete"
+                                            disabled={
+                                              removingAssignment ===
+                                              assignmentKey
+                                            }
+                                            onClick={() =>
+                                              removeAssignment(
+                                                request.id,
+                                                assignment.user_id
+                                              )
+                                            }
+                                            title="Remove worker"
+                                          >
+                                            <X
+                                              size={
+                                                14
+                                              }
+                                            />
+                                          </button>
+                                        </div>
+                                      )
+                                    }
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <select
+                              id={`worker-${request.id}`}
+                              name={`worker-${request.id}`}
+                              value=""
+                              disabled={
+                                assigningId ===
+                                  request.id ||
+                                availableWorkers.length ===
+                                  0
+                              }
+                              onChange={(event) =>
+                                assignWorker(
+                                  request.id,
+                                  event.target
+                                    .value
+                                )
+                              }
+                            >
+                              <option value="">
+                                {availableWorkers.length ===
+                                0
+                                  ? "All workers assigned"
+                                  : "Add worker"}
+                              </option>
+
+                              {availableWorkers.map(
+                                (worker) => (
+                                  <option
+                                    key={
+                                      worker.id
+                                    }
+                                    value={
+                                      worker.id
+                                    }
+                                  >
+                                    {
+                                      worker.name
+                                    }
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </div>
+                        </div>
+
+                        {!selectedExternalWorker && (
+                          <div className="external-worker-search">
+                            <div>
+                              <div className="section-label">
+                                Need an external contractor?
+                              </div>
+
+                              <p>
+                                Search for suitable
+                                contractors without
+                                removing your current
+                                internal assignment.
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() =>
+                                searchExternalWorkers(
+                                  request.id
+                                )
+                              }
+                              disabled={
+                                isSearchingExternal
+                              }
+                            >
+                              <ExternalLink
+                                size={16}
+                              />
+
+                              {isSearchingExternal
+                                ? "Finding contractors..."
+                                : "Find contractors"}
+                            </button>
+                          </div>
+                        )}
 
                         {externalWorkers.length >
                           0 && (
                           <div className="external-worker-section">
                             <div className="external-worker-header">
                               <div>
-                                <span className="ai-assignment">
-                                  <Sparkles
-                                    size={13}
-                                  />
-                                  External match
-                                </span>
+                                <div className="external-worker-title-row">
+                                  <span className="ai-assignment">
+                                    <Sparkles
+                                      size={13}
+                                    />
+                                    External contractors
+                                  </span>
+
+                                  <span className="external-worker-count">
+                                    {externalWorkers.length}
+                                  </span>
+                                </div>
 
                                 <h3>
-                                  Recommended external
-                                  workers
+                                  Recommended contractors
                                 </h3>
 
                                 <p>
-                                  {hasInternalAssignment
-                                    ? "Your current worker remains assigned. Choose an external provider if additional help is needed."
-                                    : "Choose the external provider you want to use for this request."}
+                                  Additional contractors
+                                  matched to this request.
                                 </p>
                               </div>
                             </div>
 
                             {selectedExternalWorker ? (
                               <div className="external-worker-card selected">
-                                <div>
-                                  <strong>
-                                    {
-                                      selectedExternalWorker.name
-                                    }
-                                  </strong>
+                                <div className="external-worker-main">
+                                  <div className="external-worker-heading">
+                                    <div>
+                                      <strong>
+                                        {
+                                          selectedExternalWorker.name
+                                        }
+                                      </strong>
 
-                                  <p>
-                                    {
-                                      selectedExternalWorker.trade
-                                    }
-                                    {" · "}
-                                    {
-                                      selectedExternalWorker.location
-                                    }
-                                  </p>
+                                      <span className="contractor-trade">
+                                        {
+                                          selectedExternalWorker.trade
+                                        }
+                                      </span>
+                                    </div>
 
-                                  {selectedExternalWorker.email && (
-                                    <p>
-                                      <Mail
-                                        size={14}
+                                    <span className="selected-badge">
+                                      <Check
+                                        size={13}
                                       />
-                                      {" "}
-                                      {
-                                        selectedExternalWorker.email
-                                      }
-                                    </p>
-                                  )}
+                                      Selected
+                                    </span>
+                                  </div>
 
-                                  <p>
-                                    ⭐{" "}
-                                    {
-                                      selectedExternalWorker.rating
-                                    }
-                                    {" · "}
-                                    {
-                                      selectedExternalWorker.review_count
-                                    }
-                                    {" reviews"}
-                                  </p>
+                                  <div className="contractor-details">
+                                    {selectedExternalWorker.location && (
+                                      <span>
+                                        <MapPin
+                                          size={14}
+                                        />
+                                        {
+                                          selectedExternalWorker.location
+                                        }
+                                      </span>
+                                    )}
 
-                                  <p>
-                                    {
-                                      selectedExternalWorker.availability
-                                    }
-                                  </p>
+                                    {selectedExternalWorker.rating !=
+                                      null && (
+                                      <span>
+                                        <Star
+                                          size={14}
+                                        />
+                                        {
+                                          selectedExternalWorker.rating
+                                        }
+
+                                        {selectedExternalWorker.review_count !=
+                                          null &&
+                                          ` · ${selectedExternalWorker.review_count} reviews`}
+                                      </span>
+                                    )}
+
+                                    {formatPhone(
+                                      selectedExternalWorker.phone
+                                    ) && (
+                                      <span>
+                                        <Phone
+                                          size={14}
+                                        />
+                                        {
+                                          selectedExternalWorker.phone
+                                        }
+                                      </span>
+                                    )}
+
+                                    {selectedExternalWorker.email && (
+                                      <span>
+                                        {
+                                          selectedExternalWorker.email
+                                        }
+                                      </span>
+                                    )}
+
+                                    {selectedExternalWorker.website && (
+                                      <a
+                                        href={
+                                          selectedExternalWorker.website
+                                        }
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        <ExternalLink
+                                          size={14}
+                                        />
+                                        Website
+                                      </a>
+                                    )}
+                                  </div>
 
                                   {selectedExternalWorker.match_score !=
                                     null && (
-                                    <p className="ai-assignment">
-                                      <Sparkles
-                                        size={13}
-                                      />
-                                      Match score:{" "}
-                                      {Math.round(
-                                        Number(
-                                          selectedExternalWorker.match_score
-                                        ) *
-                                          100
-                                      )}
-                                      %
-                                    </p>
+                                    <div className="contractor-match">
+                                      <div className="contractor-match-top">
+                                        <span>
+                                          Match
+                                        </span>
+
+                                        <strong>
+                                          {Math.round(
+                                            Number(
+                                              selectedExternalWorker.match_score
+                                            ) *
+                                              100
+                                          )}
+                                          %
+                                        </strong>
+                                      </div>
+
+                                      <div className="match-bar">
+                                        <div
+                                          style={{
+                                            width: `${Math.round(
+                                              Number(
+                                                selectedExternalWorker.match_score
+                                              ) *
+                                                100
+                                            )}%`,
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
                                   )}
 
                                   {selectedExternalWorker.match_reason && (
-                                    <p>
+                                    <p className="match-reason">
                                       {
                                         selectedExternalWorker.match_reason
                                       }
                                     </p>
                                   )}
-
-                                  <div className="external-worker-contact-status">
-                                    <Mail
-                                      size={14}
-                                    />
-
-                                    <span>
-                                      {formatContactStatus(
-                                        selectedExternalWorker.contact_status
-                                      )}
-                                    </span>
-                                  </div>
-
-                                  {selectedExternalWorker.email_sent_at && (
-                                    <p>
-                                      Email sent{" "}
-                                      {new Date(
-                                        selectedExternalWorker.email_sent_at
-                                      ).toLocaleString()}
-                                    </p>
-                                  )}
                                 </div>
-
-                                <div className="external-worker-provider">
-                                  <span>
-                                    {
-                                      selectedExternalWorker.provider
-                                    }
-                                  </span>
-
-                                  <Check
-                                    size={15}
-                                  />
-
-                                  <button
-                                    type="button"
-                                    className="secondary-button"
-                                    disabled
-                                  >
-                                    <Check
-                                      size={15}
-                                    />
-                                    Selected
-                                  </button>
-                                </div>
-
-                                <div className="external-worker-actions">
-                                  {selectedExternalWorker.contact_status !==
-                                    "email_sent" &&
-                                    selectedExternalWorker.contact_status !==
-                                      "response_received" &&
-                                    selectedExternalWorker.contact_status !==
-                                      "responded" && (
-                                      <button
-                                        type="button"
-                                        className="primary-button"
-                                        disabled={
-                                          contactingExternalWorker ===
-                                          `${request.id}-${selectedExternalWorker.id}`
-                                        }
-                                        onClick={() =>
-                                          contactExternalWorker(
-                                            request.id,
-                                            selectedExternalWorker.id
-                                          )
-                                        }
-                                      >
-                                        <Mail
-                                          size={
-                                            15
-                                          }
-                                        />
-
-                                        {contactingExternalWorker ===
-                                        `${request.id}-${selectedExternalWorker.id}`
-                                          ? "Sending..."
-                                          : "Contact contractor"}
-                                      </button>
-                                    )}
-
-                                  {(selectedExternalWorker.contact_status ===
-                                    "email_sent" ||
-                                    selectedExternalWorker.contact_status ===
-                                      "response_received" ||
-                                    selectedExternalWorker.contact_status ===
-                                      "responded") && (
-                                    <span className="ai-assignment">
-                                      <Mail
-                                        size={
-                                          13
-                                        }
-                                      />
-                                      Enquiry sent
-                                    </span>
-                                  )}
-                                </div>
-
-                                {selectedExternalWorker.response_received_at && (
-                                  <div className="contractor-response">
-                                    <div className="contractor-response-header">
-                                      <div>
-                                        <span className="ai-assignment">
-                                          <Sparkles
-                                            size={
-                                              13
-                                            }
-                                          />
-                                          AI response
-                                          analysis
-                                        </span>
-
-                                        <h4>
-                                          Contractor
-                                          response
-                                        </h4>
-                                      </div>
-
-                                      {selectedExternalWorker.response_quality && (
-                                        <span
-                                          className={`priority-badge ${selectedExternalWorker.response_quality}`}
-                                        >
-                                          {formatResponseQuality(
-                                            selectedExternalWorker.response_quality
-                                          )}
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {selectedExternalWorker.gemini_summary && (
-                                      <p>
-                                        {
-                                          selectedExternalWorker.gemini_summary
-                                        }
-                                      </p>
-                                    )}
-
-                                    <div className="contractor-response-meta">
-                                      {selectedExternalWorker.quoted_price !=
-                                        null && (
-                                        <span>
-                                          <PoundSterling
-                                            size={
-                                              14
-                                            }
-                                          />
-                                          Quote:{" "}
-                                          <strong>
-                                            {formatPrice(
-                                              selectedExternalWorker.quoted_price
-                                            )}
-                                          </strong>
-                                        </span>
-                                      )}
-
-                                      {selectedExternalWorker.estimated_start && (
-                                        <span>
-                                          <Clock
-                                            size={
-                                              14
-                                            }
-                                          />
-                                          Start:{" "}
-                                          {
-                                            selectedExternalWorker.estimated_start
-                                          }
-                                        </span>
-                                      )}
-
-                                      {selectedExternalWorker.can_take_job ===
-                                        true && (
-                                        <span>
-                                          <Check
-                                            size={
-                                              14
-                                            }
-                                          />
-                                          Available
-                                          for job
-                                        </span>
-                                      )}
-
-                                      {selectedExternalWorker.can_take_job ===
-                                        false && (
-                                        <span>
-                                          <X
-                                            size={
-                                              14
-                                            }
-                                          />
-                                          Cannot take
-                                          job
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {selectedExternalWorker.last_message && (
-                                      <details>
-                                        <summary>
-                                          View contractor
-                                          message
-                                        </summary>
-
-                                        <p>
-                                          {
-                                            selectedExternalWorker.last_message
-                                          }
-                                        </p>
-                                      </details>
-                                    )}
-                                  </div>
-                                )}
                               </div>
                             ) : (
                               <div className="external-worker-list">
-                                {externalWorkers
-                                  .slice(
-                                    0,
-                                    4
-                                  )
-                                  .map(
-                                    (
-                                      worker
-                                    ) => {
-                                      const workerKey =
-                                        `${request.id}-${worker.id}`
+                                {externalWorkers.map(
+                                  (
+                                    worker
+                                  ) => {
+                                    const workerKey =
+                                      `${request.id}-${worker.id}`
 
-                                      const isSelecting =
-                                        selectingExternalWorker ===
-                                        workerKey
+                                    const isSelecting =
+                                      selectingExternalWorker ===
+                                      workerKey
 
-                                      return (
-                                        <div
-                                          className="external-worker-card"
-                                          key={`${request.id}-${worker.provider}-${worker.external_id}`}
-                                        >
-                                          <div>
-                                            <strong>
-                                              {
-                                                worker.name
-                                              }
-                                            </strong>
-
-                                            <p>
-                                              {
-                                                worker.trade
-                                              }
-                                              {" · "}
-                                              {
-                                                worker.location
-                                              }
-                                            </p>
-
-                                            {worker.email && (
-                                              <p>
-                                                <Mail
-                                                  size={14}
-                                                />
-                                                {" "}
+                                    return (
+                                      <div
+                                        className="external-worker-card"
+                                        key={`${request.id}-${worker.provider}-${worker.external_id}`}
+                                      >
+                                        <div className="external-worker-main">
+                                          <div className="external-worker-heading">
+                                            <div>
+                                              <strong>
                                                 {
-                                                  worker.email
+                                                  worker.name
                                                 }
-                                              </p>
-                                            )}
+                                              </strong>
 
-                                            <p>
-                                              ⭐{" "}
-                                              {
-                                                worker.rating
-                                              }
-                                              {" · "}
-                                              {
-                                                worker.review_count
-                                              }
-                                              {" reviews"}
-                                            </p>
-
-                                            <p>
-                                              {
-                                                worker.availability
-                                              }
-                                            </p>
+                                              <span className="contractor-trade">
+                                                {
+                                                  worker.trade
+                                                }
+                                              </span>
+                                            </div>
 
                                             {worker.match_score !=
                                               null && (
-                                              <p className="ai-assignment">
-                                                <Sparkles
+                                              <div className="match-score-badge">
+                                                <span>
+                                                  Match
+                                                </span>
+
+                                                <strong>
+                                                  {Math.round(
+                                                    Number(
+                                                      worker.match_score
+                                                    ) *
+                                                      100
+                                                  )}
+                                                  %
+                                                </strong>
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          <div className="contractor-details">
+                                            {worker.location && (
+                                              <span>
+                                                <MapPin
+                                                  size={14}
+                                                />
+                                                {
+                                                  worker.location
+                                                }
+                                              </span>
+                                            )}
+
+                                            {worker.rating !=
+                                              null && (
+                                              <span>
+                                                <Star
                                                   size={
-                                                    13
+                                                    14
                                                   }
                                                 />
-                                                Match
-                                                score:{" "}
-                                                {Math.round(
-                                                  Number(
-                                                    worker.match_score
-                                                  ) *
-                                                    100
-                                                )}
-                                                %
-                                              </p>
-                                            )}
-
-                                            {worker.match_reason && (
-                                              <p>
                                                 {
-                                                  worker.match_reason
+                                                  worker.rating
                                                 }
-                                              </p>
+
+                                                {worker.review_count !=
+                                                  null &&
+                                                  ` · ${worker.review_count} reviews`}
+                                              </span>
                                             )}
 
-                                            <div className="external-worker-contact-status">
-                                              <Mail
-                                                size={
-                                                  14
-                                                }
-                                              />
-
+                                            {formatPhone(
+                                              worker.phone
+                                            ) && (
                                               <span>
-                                                {formatContactStatus(
-                                                  worker.contact_status
-                                                )}
+                                                <Phone
+                                                  size={
+                                                    14
+                                                  }
+                                                />
+                                                {
+                                                  worker.phone
+                                                }
                                               </span>
+                                            )}
+
+                                            {worker.email && (
+                                              <span>
+                                                {
+                                                  worker.email
+                                                }
+                                              </span>
+                                            )}
+
+                                            {worker.website && (
+                                              <a
+                                                href={
+                                                  worker.website
+                                                }
+                                                target="_blank"
+                                                rel="noreferrer"
+                                              >
+                                                <ExternalLink
+                                                  size={
+                                                    14
+                                                  }
+                                                />
+                                                Website
+                                              </a>
+                                            )}
+                                          </div>
+
+                                          {worker.match_score !=
+                                            null && (
+                                            <div className="contractor-match">
+                                              <div className="contractor-match-top">
+                                                <span>
+                                                  Match score
+                                                </span>
+
+                                                <strong>
+                                                  {Math.round(
+                                                    Number(
+                                                      worker.match_score
+                                                    ) *
+                                                      100
+                                                  )}
+                                                  %
+                                                </strong>
+                                              </div>
+
+                                              <div className="match-bar">
+                                                <div
+                                                  style={{
+                                                    width: `${Math.round(
+                                                      Number(
+                                                        worker.match_score
+                                                      ) *
+                                                        100
+                                                    )}%`,
+                                                  }}
+                                                />
+                                              </div>
                                             </div>
-                                          </div>
+                                          )}
 
-                                          <div className="external-worker-provider">
-                                            <span>
+                                          {worker.match_reason && (
+                                            <p className="match-reason">
                                               {
-                                                worker.provider
+                                                worker.match_reason
                                               }
-                                            </span>
-
-                                            <ExternalLink
-                                              size={
-                                                15
-                                              }
-                                            />
-
-                                            <button
-                                              type="button"
-                                              className="primary-button"
-                                              disabled={
-                                                isSelecting
-                                              }
-                                              onClick={() =>
-                                                selectExternalWorker(
-                                                  request.id,
-                                                  worker.id
-                                                )
-                                              }
-                                            >
-                                              {isSelecting
-                                                ? "Selecting..."
-                                                : "Use worker"}
-                                            </button>
-                                          </div>
+                                            </p>
+                                          )}
                                         </div>
-                                      )
-                                    }
-                                  )}
-                              </div>
-                            )}
 
-                            {selectedExternalWorker && (
-                              <div className="ai-assignment">
-                                <Check
-                                  size={13}
-                                />
-                                External provider
-                                selected
+                                        <div className="external-worker-action">
+                                          <button
+                                            type="button"
+                                            className="primary-button"
+                                            disabled={
+                                              isSelecting
+                                            }
+                                            onClick={() =>
+                                              selectExternalWorker(
+                                                request.id,
+                                                worker.id
+                                              )
+                                            }
+                                          >
+                                            {isSelecting
+                                              ? "Selecting..."
+                                              : "Use contractor"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )
+                                  }
+                                )}
                               </div>
                             )}
                           </div>

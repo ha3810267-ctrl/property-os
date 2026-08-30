@@ -5,24 +5,23 @@ from flask_jwt_extended import jwt_required
 from sqlalchemy import select, delete, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from backend.services.contractor_response_processing import (
-    process_contractor_response
-)
+
 from backend.services.ai_maintenance import (
     analyse_maintenance_request
 )
+
 from backend.services.task_assignment import (
     assign_task_with_ai
 )
+
 from backend.services.external_worker_search import (
     find_contractors_with_gemini
 )
+
 from backend.services.external_worker_ranking import (
     rank_external_workers
 )
-from backend.services.contractor_outreach import (
-    send_contractor_request
-)
+
 
 from backend.utils.audit import create_audit_log
 from backend.database import db
@@ -31,12 +30,15 @@ from backend.auth import get_current_user
 from backend.models.maintenance_request import (
     MaintenanceRequest
 )
+
 from backend.models.task_assignment import (
     TaskAssignment
 )
+
 from backend.models.external_worker_candidate import (
     ExternalWorkerCandidate
 )
+
 from backend.models.tenant import Tenant
 from backend.models.property import Property
 from backend.models.user import User
@@ -152,7 +154,11 @@ def maintenance_request_response(
                 "location": candidate.location,
                 "website": candidate.website,
                 "phone": candidate.phone,
+
+                # Publicly discovered business information.
+                # This is NOT used for email communication.
                 "email": candidate.email,
+
                 "source_url": candidate.source_url,
                 "rating": candidate.rating,
                 "review_count": candidate.review_count,
@@ -161,49 +167,7 @@ def maintenance_request_response(
                 "match_score": candidate.match_score,
                 "match_reason": candidate.match_reason,
 
-                "contact_status": (
-                    candidate.contact_status
-                ),
-
-                "email_sent_at": (
-                    candidate.email_sent_at.isoformat()
-                    if candidate.email_sent_at
-                    else None
-                ),
-
-                "response_received_at": (
-                    candidate.response_received_at.isoformat()
-                    if candidate.response_received_at
-                    else None
-                ),
-
-                "last_message": candidate.last_message,
-
-                "gemini_summary": (
-                    candidate.gemini_summary
-                ),
-
-                "response_quality": (
-                    candidate.response_quality
-                ),
-
-                "quoted_price": (
-                    candidate.quoted_price
-                ),
-
-                "estimated_start": (
-                    candidate.estimated_start
-                ),
-
-                "can_take_job": getattr(
-                    candidate,
-                    "can_take_job",
-                    None
-                ),
-
-                "is_selected": (
-                    candidate.is_selected
-                ),
+                "is_selected": candidate.is_selected,
 
                 "selected_at": (
                     candidate.selected_at.isoformat()
@@ -343,11 +307,13 @@ def create_maintenance_request():
             }, 400
 
     try:
+
         ai_result = analyse_maintenance_request(
             description
         )
 
     except ValueError as exc:
+
         return {
             "error": str(exc)
         }, 422
@@ -804,7 +770,6 @@ def remove_maintenance_assignment(
 # ============================================================
 # GEMINI CONTRACTOR DISCOVERY
 # + GEMINI RANKING
-# + AUTOMATIC OUTREACH
 # ============================================================
 
 @maintenance_bp.route(
@@ -1087,7 +1052,10 @@ def search_external_workers_for_request(
         for candidate in new_candidates:
 
             db.session.add(candidate)
-            added_candidates.append(candidate)
+
+            added_candidates.append(
+                candidate
+            )
 
         db.session.flush()
 
@@ -1136,70 +1104,12 @@ def search_external_workers_for_request(
         }, 500
 
     # --------------------------------------------------------
-    # Automatic outreach
+    # Return discovery + ranking results
     # --------------------------------------------------------
-
-    outreach_results = []
-
-    for candidate in added_candidates:
-
-        if not candidate.email:
-
-            candidate.contact_status = "no_email"
-
-            outreach_results.append({
-                "candidate_id": candidate.id,
-                "status": "no_email"
-            })
-
-            continue
-
-        try:
-
-            send_contractor_request(
-                candidate=candidate,
-                maintenance_request=maintenance_request
-            )
-
-            outreach_results.append({
-                "candidate_id": candidate.id,
-                "status": "contacted"
-            })
-
-        except Exception as exc:
-
-            print(
-                "Contractor outreach error:",
-                repr(exc)
-            )
-
-            candidate.contact_status = (
-                "email_failed"
-            )
-
-            outreach_results.append({
-                "candidate_id": candidate.id,
-                "status": "email_failed"
-            })
-
-    try:
-
-        db.session.commit()
-
-    except SQLAlchemyError:
-
-        db.session.rollback()
-
-        return {
-            "error": (
-                "Contractor outreach state could "
-                "not be saved"
-            )
-        }, 500
 
     response = {
         "message": (
-            "Gemini discovered, ranked and contacted "
+            "Gemini discovered and ranked "
             "external contractors"
         ),
 
@@ -1216,8 +1126,6 @@ def search_external_workers_for_request(
             if ranking_error is None
             else "failed"
         ),
-
-        "outreach": outreach_results,
 
         "maintenance_request": (
             maintenance_request_response(
@@ -1236,8 +1144,7 @@ def search_external_workers_for_request(
     print(
         "[external search] complete: "
         f"discovered={response['discovered']}, "
-        f"ranking={response['ranking']}, "
-        f"outreach={response['outreach']}",
+        f"ranking={response['ranking']}",
         flush=True
     )
 
@@ -1348,131 +1255,6 @@ def select_external_worker(
             "error": (
                 "External contractor could "
                 "not be selected"
-            )
-        }, 500
-
-    return maintenance_request_response(
-        maintenance_request
-    ), 200
-
-
-# ============================================================
-# MANUAL CONTACT ENDPOINT
-# ============================================================
-
-@maintenance_bp.route(
-    "/maintenance-requests/<int:maintenance_request_id>/external-workers/<int:candidate_id>/contact",
-    methods=["POST"]
-)
-@jwt_required()
-def contact_external_worker(
-    maintenance_request_id,
-    candidate_id
-):
-
-    user = get_current_user()
-
-    if not user:
-        return {
-            "error": "User not found"
-        }, 404
-
-    if user.role not in {
-        "admin",
-        "property_manager"
-    }:
-        return {
-            "error": (
-                "You do not have permission to "
-                "contact external contractors"
-            )
-        }, 403
-
-    maintenance_request = (
-        get_maintenance_request_for_user(
-            maintenance_request_id,
-            user.organisation_id
-        )
-    )
-
-    if not maintenance_request:
-        return {
-            "error": (
-                "Maintenance request not found"
-            )
-        }, 404
-
-    candidate = db.session.execute(
-        select(ExternalWorkerCandidate)
-        .where(
-            ExternalWorkerCandidate.id
-            == candidate_id,
-            ExternalWorkerCandidate.maintenance_request_id
-            == maintenance_request.id
-        )
-    ).scalar_one_or_none()
-
-    if not candidate:
-        return {
-            "error": (
-                "External contractor candidate "
-                "not found"
-            )
-        }, 404
-
-    if not candidate.email:
-        return {
-            "error": (
-                "This contractor does not have "
-                "a verified email address"
-            )
-        }, 422
-
-    if candidate.contact_status in {
-        "contacted",
-        "email_sent",
-        "response_received",
-        "responded",
-        "available",
-        "unavailable"
-    }:
-        return {
-            "error": (
-                "This contractor has already "
-                "been contacted"
-            )
-        }, 409
-
-    try:
-
-        send_contractor_request(
-            candidate=candidate,
-            maintenance_request=maintenance_request
-        )
-
-        create_audit_log(
-            user=user,
-            action=(
-                "maintenance_external_worker_contacted"
-            ),
-            resource_type="maintenance_request",
-            resource_id=maintenance_request.id
-        )
-
-        db.session.commit()
-
-    except Exception as exc:
-
-        db.session.rollback()
-
-        print(
-            "External contractor email error:",
-            repr(exc)
-        )
-
-        return {
-            "error": (
-                "The contractor email could not be sent"
             )
         }, 500
 
@@ -1823,187 +1605,4 @@ def delete_maintenance_request(
             "Maintenance request deleted successfully"
         ),
         "id": maintenance_request_id
-    }, 200
-
-
-# ============================================================
-# CONTRACTOR RESPONSE PROCESSING
-# ============================================================
-
-@maintenance_bp.route(
-    "/maintenance-requests/<int:maintenance_request_id>/external-workers/<int:candidate_id>/response",
-    methods=["POST"]
-)
-@jwt_required()
-def process_external_worker_response(
-    maintenance_request_id,
-    candidate_id
-):
-
-    user = get_current_user()
-
-    if not user:
-        return {
-            "error": "User not found"
-        }, 404
-
-    if user.role not in {
-        "admin",
-        "property_manager"
-    }:
-        return {
-            "error": (
-                "You do not have permission to "
-                "process contractor responses"
-            )
-        }, 403
-
-    maintenance_request = (
-        get_maintenance_request_for_user(
-            maintenance_request_id,
-            user.organisation_id
-        )
-    )
-
-    if not maintenance_request:
-        return {
-            "error": (
-                "Maintenance request not found"
-            )
-        }, 404
-
-    data = request.get_json(
-        silent=True
-    )
-
-    if not isinstance(data, dict):
-        return {
-            "error": (
-                "Request body must be a valid JSON object"
-            )
-        }, 400
-
-    contractor_response = data.get("response")
-
-    if (
-        not isinstance(
-            contractor_response,
-            str
-        )
-        or not contractor_response.strip()
-    ):
-        return {
-            "error": (
-                "Contractor response is required"
-            )
-        }, 400
-
-    candidate = db.session.execute(
-        select(ExternalWorkerCandidate)
-        .where(
-            ExternalWorkerCandidate.id
-            == candidate_id,
-            ExternalWorkerCandidate.maintenance_request_id
-            == maintenance_request.id
-        )
-    ).scalar_one_or_none()
-
-    if not candidate:
-        return {
-            "error": (
-                "External contractor candidate "
-                "not found"
-            )
-        }, 404
-
-    try:
-
-        result = process_contractor_response(
-            candidate=candidate,
-            maintenance_request=maintenance_request,
-            contractor_response=contractor_response.strip()
-        )
-
-        create_audit_log(
-            user=user,
-            action=(
-                "maintenance_external_worker_response_processed"
-            ),
-            resource_type="maintenance_request",
-            resource_id=maintenance_request.id
-        )
-
-        db.session.commit()
-
-    except ValueError as exc:
-
-        db.session.rollback()
-
-        return {
-            "error": str(exc)
-        }, 422
-
-    except RuntimeError as exc:
-
-        db.session.rollback()
-
-        print(
-            "Contractor response processing error:",
-            repr(exc)
-        )
-
-        return {
-            "error": str(exc)
-        }, 500
-
-    except SQLAlchemyError as exc:
-
-        db.session.rollback()
-
-        print(
-            "Contractor response database error:",
-            repr(exc)
-        )
-
-        return {
-            "error": (
-                "Contractor response processing "
-                "could not be saved"
-            )
-        }, 500
-
-    except Exception as exc:
-
-        db.session.rollback()
-
-        print(
-            "Unexpected contractor response "
-            "processing error:",
-            repr(exc)
-        )
-
-        return {
-            "error": (
-                "Contractor response could "
-                "not be processed"
-            )
-        }, 500
-
-    return {
-        "message": (
-            "Contractor response processed "
-            "and contractor rankings updated"
-        ),
-
-        "candidate_id": candidate.id,
-
-        "analysis": result.get(
-            "analysis"
-        ),
-
-        "maintenance_request": (
-            maintenance_request_response(
-                maintenance_request
-            )
-        )
     }, 200

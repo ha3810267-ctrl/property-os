@@ -12,7 +12,6 @@ from backend.routes.service_provider_invitations import (
     service_provider_invitations_bp
 )
 
-from backend.routes.resend_webhook import resend_webhook_bp
 
 from sqlalchemy import text
 from flask_migrate import Migrate
@@ -117,9 +116,7 @@ app.register_blueprint(
     service_provider_invitations_bp
 )
 
-app.register_blueprint(
-    resend_webhook_bp
-)
+
 
 
 @app.route("/")

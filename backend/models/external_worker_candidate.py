@@ -107,60 +107,6 @@ class ExternalWorkerCandidate(db.Model):
     )
 
     # ========================================================
-    # CONTRACTOR OUTREACH
-    # ========================================================
-
-    contact_status = db.Column(
-        db.String(50),
-        nullable=False,
-        default="discovered",
-        index=True
-    )
-
-    email_sent_at = db.Column(
-        db.DateTime,
-        nullable=True
-    )
-
-    # ========================================================
-    # CONTRACTOR RESPONSE
-    # ========================================================
-
-    response_received_at = db.Column(
-        db.DateTime,
-        nullable=True
-    )
-
-    last_message = db.Column(
-        db.Text,
-        nullable=True
-    )
-
-    response_quality = db.Column(
-        db.String(30),
-        nullable=True
-    )
-
-    # ========================================================
-    # GEMINI RESPONSE ANALYSIS
-    # ========================================================
-
-    gemini_summary = db.Column(
-        db.Text,
-        nullable=True
-    )
-
-    quoted_price = db.Column(
-        db.Float,
-        nullable=True
-    )
-
-    estimated_start = db.Column(
-        db.String(100),
-        nullable=True
-    )
-
-    # ========================================================
     # SELECTION
     # ========================================================
 
