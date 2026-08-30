@@ -1,3 +1,4 @@
+
 :root {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #172033;
@@ -1050,6 +1051,7 @@ button {
     padding: 15px 0;
   }
 }
+
 /* ============================================================
    MAINTENANCE PAGE
    ============================================================ */
@@ -1137,7 +1139,6 @@ button {
   font-size: 12px;
   white-space: nowrap;
 }
-
 
 /* ============================================================
    MAINTENANCE REQUEST CARDS
@@ -1246,7 +1247,6 @@ button {
 .maintenance-controls select:focus {
   border-color: #cbd0d8;
 }
-
 
 /* ============================================================
    INTERNAL ASSIGNMENT
@@ -1358,7 +1358,6 @@ button {
   font-size: 11px;
 }
 
-
 /* ============================================================
    EXTERNAL CONTRACTOR SEARCH
    ============================================================ */
@@ -1378,7 +1377,6 @@ button {
 .external-worker-search .secondary-button {
   flex-shrink: 0;
 }
-
 
 /* ============================================================
    EXTERNAL CONTRACTORS
@@ -1439,7 +1437,6 @@ button {
   color: #9a9faa;
   font-size: 11px;
 }
-
 
 /* ============================================================
    COMPACT CONTRACTOR CARDS
@@ -1532,14 +1529,13 @@ button {
   font-size: 10px;
 }
 
-
 /* ============================================================
    STRUCTURED CONTRACTOR DETAILS
    ============================================================ */
 
 .contractor-details {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 7px;
   margin-bottom: 11px;
 }
@@ -1547,6 +1543,7 @@ button {
 .contractor-details > span,
 .contractor-details > a {
   min-width: 0;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1558,6 +1555,9 @@ button {
   font-size: 10px;
   line-height: 1.25;
   text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .contractor-details > span svg,
@@ -1566,26 +1566,10 @@ button {
   color: #9aa0aa;
 }
 
-.contractor-details > span {
-  overflow: hidden;
-}
-
-.contractor-details > span:not(:has(svg)) {
-  grid-column: 1 / -1;
-}
-
-.contractor-details > span,
-.contractor-details > a {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .contractor-details > a:hover {
   border-color: #dfe2e7;
   color: #454b56;
 }
-
 
 /* ============================================================
    MATCH SCORE
@@ -1629,7 +1613,6 @@ button {
   transition: width 250ms ease;
 }
 
-
 /* ============================================================
    MATCH REASON
    ============================================================ */
@@ -1642,7 +1625,6 @@ button {
   font-size: 10px;
   line-height: 1.45;
 }
-
 
 /* ============================================================
    CONTRACTOR ACTION
@@ -1663,7 +1645,6 @@ button {
   font-size: 10px;
   box-shadow: none;
 }
-
 
 /* ============================================================
    SELECTED CONTRACTOR
@@ -1686,7 +1667,6 @@ button {
   font-size: 9px;
   font-weight: 700;
 }
-
 
 /* ============================================================
    SECONDARY BUTTON
@@ -1724,7 +1704,6 @@ button {
   transform: none;
 }
 
-
 /* ============================================================
    PROPERTY ACTION
    ============================================================ */
@@ -1751,7 +1730,6 @@ button {
   background: #fff7f6;
   color: #b42318;
 }
-
 
 /* ============================================================
    RESPONSIVE MAINTENANCE
@@ -1849,15 +1827,8 @@ button {
     font-size: 14px;
   }
 
-  .contractor-details {
-    grid-template-columns: 1fr;
-  }
-
-  .contractor-details > span:not(:has(svg)) {
-    grid-column: auto;
-  }
-
   .external-worker-heading {
     gap: 7px;
   }
 }
+
