@@ -1438,8 +1438,6 @@ button {
   font-size: 10px;
   line-height: 1.35;
   text-decoration: none;
-
-  /* FIX */
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -1455,6 +1453,22 @@ button {
 .contractor-details > a:hover {
   border-color: #dfe2e7;
   color: #454b56;
+}
+
+/* Phone and email spacing */
+
+.contractor-details .contractor-phone {
+  margin-bottom: 3px;
+}
+
+.contractor-details .contractor-email {
+  margin-top: 3px;
+}
+
+/* Website always starts on its own row */
+
+.contractor-details .contractor-website {
+  margin-top: 5px;
 }
 
 /* ============================================================
