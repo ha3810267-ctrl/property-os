@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy import select
 
@@ -25,6 +25,7 @@ service_providers_bp = Blueprint(
 
 
 def _get_current_user():
+
     claims = get_jwt()
 
     return {
@@ -35,6 +36,7 @@ def _get_current_user():
 
 
 def _candidate_to_dict(candidate):
+
     return {
         "id": candidate.id,
         "maintenance_request_id": (
@@ -97,6 +99,7 @@ def _get_maintenance_request_for_org(
     maintenance_request_id,
     organisation_id
 ):
+
     return db.session.execute(
         select(MaintenanceRequest)
         .join(
@@ -165,6 +168,115 @@ def get_service_providers():
         }
         for provider in providers
     ]), 200
+
+
+@service_providers_bp.route(
+    "/service-providers",
+    methods=["POST"]
+)
+@jwt_required()
+def create_service_provider():
+
+    current_user = _get_current_user()
+
+    organisation_id = current_user["organisation_id"]
+    role = current_user["role"]
+
+    if not organisation_id:
+        return jsonify({
+            "error": "User organisation could not be determined"
+        }), 400
+
+    if role not in {
+        "admin",
+        "property_manager"
+    }:
+        return jsonify({
+            "error": (
+                "Only admins and property managers "
+                "can create service providers"
+            )
+        }), 403
+
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return jsonify({
+            "error": "Request body is required"
+        }), 400
+
+    name = data.get("name")
+    business_name = data.get("business_name")
+    email = data.get("email")
+    phone = data.get("phone")
+    speciality = data.get("speciality")
+    service_area = data.get("service_area")
+
+    if not isinstance(name, str) or not name.strip():
+        return jsonify({
+            "error": "Service provider name is required"
+        }), 400
+
+    if not isinstance(email, str) or not email.strip():
+        return jsonify({
+            "error": "Service provider email is required"
+        }), 400
+
+    provider = ServiceProvider(
+        organisation_id=organisation_id,
+        name=name.strip(),
+        business_name=(
+            business_name.strip()
+            if isinstance(business_name, str)
+            and business_name.strip()
+            else None
+        ),
+        email=email.strip().lower(),
+        phone=(
+            phone.strip()
+            if isinstance(phone, str)
+            and phone.strip()
+            else None
+        ),
+        speciality=(
+            speciality.strip()
+            if isinstance(speciality, str)
+            and speciality.strip()
+            else None
+        ),
+        service_area=(
+            service_area.strip()
+            if isinstance(service_area, str)
+            and service_area.strip()
+            else None
+        ),
+        is_active=True
+    )
+
+    db.session.add(provider)
+
+    try:
+        db.session.commit()
+
+    except Exception:
+        db.session.rollback()
+
+        return jsonify({
+            "error": "Service provider could not be created"
+        }), 409
+
+    return jsonify({
+        "id": provider.id,
+        "organisation_id": provider.organisation_id,
+        "name": provider.name,
+        "business_name": provider.business_name,
+        "email": provider.email,
+        "phone": provider.phone,
+        "speciality": provider.speciality,
+        "service_area": provider.service_area,
+        "user_id": provider.user_id,
+        "is_active": provider.is_active
+    }), 201
 
 
 # ============================================================
