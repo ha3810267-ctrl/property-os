@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-
+import os
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 from sqlalchemy import select
@@ -23,7 +23,10 @@ service_provider_invitations_bp = Blueprint(
 
 
 INVITATION_EXPIRY_DAYS = 7
-FRONTEND_URL = "http://localhost:5173"
+FRONTEND_URL = os.getenv(
+    "FRONTEND_URL",
+    "http://localhost:5173"
+)
 
 
 def hash_invitation_token(token):
