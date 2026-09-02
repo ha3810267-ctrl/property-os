@@ -1,7 +1,7 @@
 from flask import Blueprint, request
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-
+import os
 from backend.database import db
 from backend.models.user import User
 from backend.models.tenant import Tenant
@@ -238,7 +238,6 @@ def tenant_signup():
         "tenant_id": tenant_user.tenant_id
     }, 201
 
-
 @auth_bp.route("/forgot-password", methods=["POST"])
 def forgot_password():
 
@@ -296,8 +295,17 @@ def forgot_password():
             "error": "Password reset could not be started"
         }, 500
 
+    frontend_url = os.getenv("FRONTEND_URL")
+
+    if not frontend_url:
+        return {
+            "error": "Password reset is not configured correctly"
+        }, 500
+
+    frontend_url = frontend_url.rstrip("/")
+
     reset_url = (
-        "http://localhost:5173/reset-password"
+        f"{frontend_url}/reset-password"
         f"?token={raw_token}"
     )
 
@@ -370,7 +378,6 @@ def forgot_password():
             "a password reset link will be sent"
         )
     }, 200
-
 
 @auth_bp.route("/reset-password", methods=["POST"])
 def reset_password():
