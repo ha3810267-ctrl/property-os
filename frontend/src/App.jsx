@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 
 import AppLayout from "./layouts/AppLayout"
 
-import Landing from "./pages/Landing"
 import Dashboard from "./pages/Dashboard"
 import Properties from "./pages/Properties"
 import Tenants from "./pages/Tenants"
@@ -63,7 +62,7 @@ function TenantRoute({ children }) {
   }
 
   if (user.role !== "tenant") {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to="/" replace />
   }
 
   return children
@@ -75,14 +74,6 @@ function App() {
     <BrowserRouter>
 
       <Routes>
-
-        {/* Public landing page */}
-
-        <Route
-          path="/"
-          element={<Landing />}
-        />
-
 
         {/* Public */}
 
@@ -135,7 +126,7 @@ function App() {
         >
 
           <Route
-            path="/dashboard"
+            path="/"
             element={<Dashboard />}
           />
 
