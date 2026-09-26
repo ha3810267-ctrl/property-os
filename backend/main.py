@@ -1,3 +1,4 @@
+
 import flask
 import os
 
@@ -12,7 +13,9 @@ from backend.routes.service_provider_invitations import (
     service_provider_invitations_bp
 )
 
-
+from backend.routes.resend_webhooks import (
+    resend_webhooks_bp
+)
 
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
@@ -26,6 +29,7 @@ from backend.models.property import Property
 from backend.models.tenant import Tenant
 from backend.models.maintenance_request import MaintenanceRequest
 from backend.models.audit_log import AuditLog
+from backend.models.external_worker_message import ExternalWorkerMessage
 
 from backend.routes.organisations import organisations_bp
 from backend.routes.users import users_bp
@@ -67,14 +71,21 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(
 jwt = JWTManager(app)
 
 
-database_url = os.getenv("DATABASE_URL")
+database_url = os.getenv(
+    "DATABASE_URL"
+)
 
-if database_url and database_url.startswith("postgresql://"):
+
+if (
+    database_url
+    and database_url.startswith("postgresql://")
+):
     database_url = database_url.replace(
         "postgresql://",
         "postgresql+psycopg://",
         1
     )
+
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 
@@ -128,14 +139,16 @@ app.register_blueprint(
     service_provider_invitations_bp
 )
 
-
+app.register_blueprint(
+    resend_webhooks_bp
+)
 
 
 @app.route("/")
 def home():
-    return os.getenv("APP_NAME")
-
-
+    return os.getenv(
+        "APP_NAME"
+    )
 
 
 if __name__ == "__main__":

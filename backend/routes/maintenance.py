@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
+from html import escape
 
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
@@ -22,6 +23,10 @@ from backend.services.external_worker_ranking import (
     rank_external_workers
 )
 
+from backend.services.email import (
+    send_email
+)
+
 
 from backend.utils.audit import create_audit_log
 from backend.database import db
@@ -37,6 +42,10 @@ from backend.models.task_assignment import (
 
 from backend.models.external_worker_candidate import (
     ExternalWorkerCandidate
+)
+
+from backend.models.external_worker_message import (
+    ExternalWorkerMessage
 )
 
 from backend.models.tenant import Tenant
@@ -154,33 +163,24 @@ def maintenance_request_response(
                 "location": candidate.location,
                 "website": candidate.website,
                 "phone": candidate.phone,
-
-                # Publicly discovered business information.
-                # This is NOT used for email communication.
                 "email": candidate.email,
-
                 "source_url": candidate.source_url,
                 "rating": candidate.rating,
                 "review_count": candidate.review_count,
                 "availability": candidate.availability,
-
                 "match_score": candidate.match_score,
                 "match_reason": candidate.match_reason,
-
                 "is_selected": candidate.is_selected,
-
                 "selected_at": (
                     candidate.selected_at.isoformat()
                     if candidate.selected_at
                     else None
                 ),
-
                 "created_at": (
                     candidate.created_at.isoformat()
                     if candidate.created_at
                     else None
                 ),
-
                 "updated_at": (
                     candidate.updated_at.isoformat()
                     if candidate.updated_at
@@ -226,10 +226,10 @@ def get_property_location_for_request(
         return None
 
     location = getattr(
-    property_record,
-    "address",
-    None
-)
+        property_record,
+        "address",
+        None
+    )
 
     if not isinstance(location, str):
         return None
@@ -237,6 +237,225 @@ def get_property_location_for_request(
     location = location.strip()
 
     return location or None
+
+
+def build_external_worker_email(
+    maintenance_request,
+    property_location
+):
+    subject = (
+       f"Maintenance request – {property_location}"
+    )
+
+    safe_category = escape(
+        maintenance_request.category
+        or "Not specified"
+    )
+
+    safe_priority = escape(
+        maintenance_request.priority
+        or "Not specified"
+    )
+
+    safe_location = escape(
+        property_location
+        or "Not specified"
+    )
+
+    safe_description = escape(
+        maintenance_request.description
+    )
+
+    html = f"""
+    <div>
+        <h2>Maintenance Request</h2>
+
+        <p>
+            <strong>Request #{maintenance_request.id}</strong>
+        </p>
+
+        <p>
+            <strong>Category:</strong>
+            {safe_category}
+        </p>
+
+        <p>
+            <strong>Priority:</strong>
+            {safe_priority}
+        </p>
+
+        <p>
+            <strong>Location:</strong>
+            {safe_location}
+        </p>
+
+        <p>
+            <strong>Issue:</strong>
+        </p>
+
+        <p>
+            {safe_description}
+        </p>
+
+        <p>
+            Please reply to this email with your
+            availability and any relevant information
+            about completing this work.
+        </p>
+    </div>
+    """
+
+    text_body = (
+        "Maintenance Request\n\n"
+        f"Request #{maintenance_request.id}\n\n"
+        f"Category: "
+        f"{maintenance_request.category or 'Not specified'}\n\n"
+        f"Priority: "
+        f"{maintenance_request.priority or 'Not specified'}\n\n"
+        f"Location: "
+        f"{property_location or 'Not specified'}\n\n"
+        "Issue:\n"
+        f"{maintenance_request.description}\n\n"
+        "Please reply to this email with your "
+        "availability and any relevant "
+        "information about completing this work."
+    )
+
+    return subject, html, text_body
+
+
+def automatically_contact_external_workers(
+    maintenance_request,
+    candidates,
+    organisation_id
+):
+    """
+    Automatically emails every newly discovered contractor
+    that has a public email address.
+
+    Contractors without an email are skipped.
+
+    Existing candidates are never passed into this function,
+    so repeating contractor discovery does not resend emails.
+    """
+
+    property_location = get_property_location_for_request(
+        maintenance_request,
+        organisation_id
+    )
+
+    subject, html, text_body = (
+        build_external_worker_email(
+            maintenance_request,
+            property_location
+        )
+    )
+
+    sent = []
+    skipped = []
+    failed = []
+
+    for candidate in candidates:
+
+        email = (
+            candidate.email.strip()
+            if isinstance(candidate.email, str)
+            else None
+        )
+
+        if not email:
+
+            skipped.append({
+                "candidate_id": candidate.id,
+                "contractor": candidate.name,
+                "reason": "No public email address found"
+            })
+
+            continue
+
+        try:
+
+            result = send_email(
+                to=email,
+                subject=subject,
+                html=html
+            )
+
+            resend_message_id = None
+
+            if isinstance(result, dict):
+
+                resend_message_id = (
+                    result.get("id")
+                    or result.get("email_id")
+                )
+
+            else:
+
+                resend_message_id = getattr(
+                    result,
+                    "id",
+                    None
+                )
+
+            message = ExternalWorkerMessage(
+                maintenance_request_id=(
+                    maintenance_request.id
+                ),
+                candidate_id=candidate.id,
+                direction="outbound",
+                resend_message_id=resend_message_id,
+                sender_email=None,
+                recipient_email=email,
+                subject=subject,
+                text_body=text_body,
+                html_body=html,
+                received_at=None
+            )
+
+            db.session.add(
+                message
+            )
+
+            db.session.commit()
+
+            sent.append({
+                "candidate_id": candidate.id,
+                "contractor": candidate.name,
+                "email": email,
+                "resend_message_id": resend_message_id
+            })
+
+            print(
+                "[contractor email] sent: "
+                f"candidate={candidate.id}, "
+                f"name={candidate.name!r}, "
+                f"email={email!r}, "
+                f"resend_id={resend_message_id!r}",
+                flush=True
+            )
+
+        except Exception as exc:
+
+            db.session.rollback()
+
+            print(
+                "[contractor email] failed: "
+                f"candidate={candidate.id}, "
+                f"name={candidate.name!r}, "
+                f"email={email!r}, "
+                f"error={exc!r}",
+                flush=True
+            )
+
+            failed.append({
+                "candidate_id": candidate.id,
+                "contractor": candidate.name,
+                "email": email,
+                "error": str(exc)
+            })
+
+    return sent, skipped, failed
 
 
 # ============================================================
@@ -770,6 +989,7 @@ def remove_maintenance_assignment(
 # ============================================================
 # GEMINI CONTRACTOR DISCOVERY
 # + GEMINI RANKING
+# + AUTOMATIC EMAIL
 # ============================================================
 
 @maintenance_bp.route(
@@ -908,6 +1128,7 @@ def search_external_workers_for_request(
         )
 
         for candidate in candidates:
+
             print(
                 "[external search] candidate: "
                 f"name={candidate.name!r}, "
@@ -1051,7 +1272,9 @@ def search_external_workers_for_request(
 
         for candidate in new_candidates:
 
-            db.session.add(candidate)
+            db.session.add(
+                candidate
+            )
 
             added_candidates.append(
                 candidate
@@ -1104,7 +1327,53 @@ def search_external_workers_for_request(
         }, 500
 
     # --------------------------------------------------------
-    # Return discovery + ranking results
+    # AUTOMATIC CONTRACTOR EMAIL
+    # --------------------------------------------------------
+
+    sent = []
+    skipped = []
+    email_failed = []
+
+    if added_candidates:
+
+        (
+            sent,
+            skipped,
+            email_failed
+        ) = automatically_contact_external_workers(
+            maintenance_request=maintenance_request,
+            candidates=added_candidates,
+            organisation_id=user.organisation_id
+        )
+
+        if sent:
+
+            try:
+
+                create_audit_log(
+                    user=user,
+                    action=(
+                        "maintenance_external_worker_emails_sent"
+                    ),
+                    resource_type="maintenance_request",
+                    resource_id=maintenance_request.id
+                )
+
+                db.session.commit()
+
+            except SQLAlchemyError:
+
+                db.session.rollback()
+
+                print(
+                    "[contractor email] "
+                    "emails were sent but email audit "
+                    "log could not be saved",
+                    flush=True
+                )
+
+    # --------------------------------------------------------
+    # Return discovery + ranking + email results
     # --------------------------------------------------------
 
     response = {
@@ -1127,6 +1396,12 @@ def search_external_workers_for_request(
             else "failed"
         ),
 
+        "emails": {
+            "sent": sent,
+            "skipped": skipped,
+            "failed": email_failed
+        },
+
         "maintenance_request": (
             maintenance_request_response(
                 maintenance_request
@@ -1144,7 +1419,10 @@ def search_external_workers_for_request(
     print(
         "[external search] complete: "
         f"discovered={response['discovered']}, "
-        f"ranking={response['ranking']}",
+        f"ranking={response['ranking']}, "
+        f"emails_sent={len(sent)}, "
+        f"emails_skipped={len(skipped)}, "
+        f"emails_failed={len(email_failed)}",
         flush=True
     )
 
@@ -1152,7 +1430,7 @@ def search_external_workers_for_request(
 
 
 # ============================================================
-# SELECT EXTERNAL CONTRACTOR
+# SELECT / DESELECT EXTERNAL CONTRACTOR
 # ============================================================
 
 @maintenance_bp.route(
@@ -1217,30 +1495,29 @@ def select_external_worker(
 
     try:
 
-        db.session.execute(
-            update(ExternalWorkerCandidate)
-            .where(
-                ExternalWorkerCandidate
-                .maintenance_request_id
-                == maintenance_request.id
-            )
-            .values(
-                is_selected=False,
-                selected_at=None
-            )
-        )
+        if candidate.is_selected:
 
-        candidate.is_selected = True
+            candidate.is_selected = False
+            candidate.selected_at = None
 
-        candidate.selected_at = (
-            datetime.now(timezone.utc)
-        )
+            audit_action = (
+                "maintenance_external_worker_deselected"
+            )
+
+        else:
+
+            candidate.is_selected = True
+            candidate.selected_at = (
+                datetime.now(timezone.utc)
+            )
+
+            audit_action = (
+                "maintenance_external_worker_selected"
+            )
 
         create_audit_log(
             user=user,
-            action=(
-                "maintenance_external_worker_selected"
-            ),
+            action=audit_action,
             resource_type="maintenance_request",
             resource_id=maintenance_request.id
         )
@@ -1253,8 +1530,8 @@ def select_external_worker(
 
         return {
             "error": (
-                "External contractor could "
-                "not be selected"
+                "External contractor selection "
+                "could not be updated"
             )
         }, 500
 
@@ -1423,6 +1700,14 @@ def update_maintenance_request(
             )
 
             db.session.execute(
+                delete(ExternalWorkerMessage).where(
+                    ExternalWorkerMessage
+                    .maintenance_request_id
+                    == maintenance_request.id
+                )
+            )
+
+            db.session.execute(
                 delete(
                     ExternalWorkerCandidate
                 ).where(
@@ -1548,6 +1833,14 @@ def delete_maintenance_request(
         db.session.execute(
             delete(TaskAssignment).where(
                 TaskAssignment
+                .maintenance_request_id
+                == maintenance_request.id
+            )
+        )
+
+        db.session.execute(
+            delete(ExternalWorkerMessage).where(
+                ExternalWorkerMessage
                 .maintenance_request_id
                 == maintenance_request.id
             )
