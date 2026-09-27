@@ -90,7 +90,7 @@ def inbound_email():
             RESEND_WEBHOOK_SECRET
         )
 
-        event = webhook.verify(
+        webhook.verify(
             raw_body,
             {
                 "svix-id": svix_id,
@@ -108,6 +108,27 @@ def inbound_email():
 
         return jsonify({
             "error": "Invalid webhook signature"
+        }), 400
+
+    # ========================================================
+    # PARSE VERIFIED EVENT
+    # ========================================================
+
+    try:
+
+        event = json.loads(
+            raw_body
+        )
+
+    except Exception as exc:
+
+        print(
+            "RESEND WEBHOOK JSON ERROR:",
+            repr(exc)
+        )
+
+        return jsonify({
+            "error": "Invalid webhook JSON"
         }), 400
 
     # ========================================================
