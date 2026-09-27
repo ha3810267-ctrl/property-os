@@ -1,3 +1,4 @@
+
 from datetime import datetime, timezone
 from html import escape
 
@@ -318,7 +319,7 @@ def build_external_worker_email(
         f"{maintenance_request.description}\n\n"
         "Please reply to this email with your "
         "availability and any relevant "
-        "information about completing this work."
+        "information about completing the work."
     )
 
     return subject, html, text_body
@@ -1427,6 +1428,91 @@ def search_external_workers_for_request(
     )
 
     return response, 200
+
+
+# ============================================================
+# TEMPORARY TEST EMAIL ENDPOINT
+# ============================================================
+
+@maintenance_bp.route(
+    "/maintenance-requests/<int:maintenance_request_id>/external-workers/<int:candidate_id>/test-email",
+    methods=["POST"]
+)
+@jwt_required()
+def test_external_worker_email(
+    maintenance_request_id,
+    candidate_id
+):
+
+    user = get_current_user()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }, 404
+
+    if user.role not in {
+        "admin",
+        "property_manager"
+    }:
+        return {
+            "error": (
+                "You do not have permission to "
+                "send contractor test emails"
+            )
+        }, 403
+
+    maintenance_request = (
+        get_maintenance_request_for_user(
+            maintenance_request_id,
+            user.organisation_id
+        )
+    )
+
+    if not maintenance_request:
+        return {
+            "error": (
+                "Maintenance request not found"
+            )
+        }, 404
+
+    candidate = db.session.execute(
+        select(ExternalWorkerCandidate)
+        .where(
+            ExternalWorkerCandidate.id == candidate_id,
+            ExternalWorkerCandidate.maintenance_request_id
+            == maintenance_request.id
+        )
+    ).scalar_one_or_none()
+
+    if not candidate:
+        return {
+            "error": (
+                "External contractor candidate not found"
+            )
+        }, 404
+
+    sent, skipped, failed = (
+        automatically_contact_external_workers(
+            maintenance_request=maintenance_request,
+            candidates=[candidate],
+            organisation_id=user.organisation_id
+        )
+    )
+
+    return {
+        "message": "Test contractor email attempted",
+        "candidate": {
+            "id": candidate.id,
+            "name": candidate.name,
+            "email": candidate.email
+        },
+        "emails": {
+            "sent": sent,
+            "skipped": skipped,
+            "failed": failed
+        }
+    }, 200
 
 
 # ============================================================
