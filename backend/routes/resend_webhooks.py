@@ -23,6 +23,7 @@ resend_webhooks_bp = Blueprint(
 
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+
 RESEND_WEBHOOK_SECRET = os.getenv(
     "RESEND_WEBHOOK_SECRET"
 )
@@ -63,7 +64,11 @@ def inbound_email():
         "svix-signature"
     )
 
-    if not svix_id or not svix_timestamp or not svix_signature:
+    if (
+        not svix_id
+        or not svix_timestamp
+        or not svix_signature
+    ):
         return jsonify({
             "error": "Missing webhook signature headers"
         }), 400
@@ -88,7 +93,12 @@ def inbound_email():
             secret=RESEND_WEBHOOK_SECRET
         )
 
-    except Exception:
+    except Exception as exc:
+        print(
+            "RESEND WEBHOOK VERIFICATION ERROR:",
+            repr(exc)
+        )
+
         return jsonify({
             "error": "Invalid webhook signature"
         }), 400
