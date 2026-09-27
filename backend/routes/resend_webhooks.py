@@ -4,6 +4,8 @@ import os
 from datetime import datetime, timezone
 
 import resend
+from svix.webhooks import Webhook
+
 from flask import Blueprint, jsonify, request
 
 from backend.database import db
@@ -79,21 +81,26 @@ def inbound_email():
         }), 500
 
     # ========================================================
-    # VERIFY RESEND WEBHOOK
+    # VERIFY RESEND / SVIX WEBHOOK
     # ========================================================
 
     try:
-        event = resend.webhooks.verify(
-            payload=raw_body,
-            headers={
+
+        webhook = Webhook(
+            RESEND_WEBHOOK_SECRET
+        )
+
+        event = webhook.verify(
+            raw_body,
+            {
                 "svix-id": svix_id,
                 "svix-timestamp": svix_timestamp,
                 "svix-signature": svix_signature
-            },
-            secret=RESEND_WEBHOOK_SECRET
+            }
         )
 
     except Exception as exc:
+
         print(
             "RESEND WEBHOOK VERIFICATION ERROR:",
             repr(exc)
@@ -112,7 +119,9 @@ def inbound_email():
             "status": "ignored"
         }), 200
 
-    data = event.get("data") or {}
+    data = event.get(
+        "data"
+    ) or {}
 
     resend_email_id = data.get(
         "email_id"
@@ -160,13 +169,20 @@ def inbound_email():
     # ========================================================
 
     try:
+
         received_email = (
             resend.Emails.Receiving.get(
                 resend_email_id
             )
         )
 
-    except Exception:
+    except Exception as exc:
+
+        print(
+            "RESEND RECEIVED EMAIL ERROR:",
+            repr(exc)
+        )
+
         return jsonify({
             "error": "Failed to retrieve received email"
         }), 500
@@ -175,12 +191,14 @@ def inbound_email():
         received_email,
         dict
     ):
+
         email_data = (
             received_email.get("data")
             or received_email
         )
 
     else:
+
         email_data = getattr(
             received_email,
             "data",
@@ -191,10 +209,12 @@ def inbound_email():
         name,
         default=None
     ):
+
         if isinstance(
             email_data,
             dict
         ):
+
             return email_data.get(
                 name,
                 default
@@ -237,6 +257,7 @@ def inbound_email():
         recipient_emails,
         str
     ):
+
         recipient_emails = [
             recipient_emails
         ]
@@ -267,6 +288,7 @@ def inbound_email():
         and "<" in sender_email
         and ">" in sender_email
     ):
+
         sender_address = (
             sender_email
             .split("<", 1)[1]
@@ -275,6 +297,7 @@ def inbound_email():
         )
 
     if sender_address:
+
         sender_address = (
             sender_address
             .lower()
@@ -288,6 +311,7 @@ def inbound_email():
     candidate = None
 
     if sender_address:
+
         candidate = (
             ExternalWorkerCandidate.query
             .filter(
@@ -305,6 +329,7 @@ def inbound_email():
     # ========================================================
 
     if not candidate:
+
         return jsonify({
             "status": "received",
             "matched": False
