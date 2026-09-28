@@ -1,4 +1,3 @@
-
 import json
 import os
 import re
@@ -239,12 +238,92 @@ def _is_public_hostname(hostname):
     """
     Prevent website fetching from resolving to local/private
     network addresses.
+
+    This function is deliberately defensive because Gemini
+    search results can occasionally contain malformed website
+    strings.
     """
 
     if not hostname:
         return False
 
-    hostname = hostname.lower().strip()
+    try:
+        hostname = hostname.strip().lower()
+    except Exception:
+        return False
+
+    if not hostname:
+        return False
+
+    # ---------------------------------------------------------
+    # STRICT HOSTNAME VALIDATION
+    #
+    # DNS hostnames have a maximum total length of 253
+    # characters and each individual label may be at most
+    # 63 characters.
+    #
+    # This prevents malformed Gemini output from reaching
+    # socket.getaddrinfo(), which can otherwise raise:
+    #
+    # UnicodeEncodeError: 'idna' codec ... label too long
+    # ---------------------------------------------------------
+
+    if len(hostname) > 253:
+        return False
+
+    if any(
+        character.isspace()
+        for character in hostname
+    ):
+        return False
+
+    if hostname.startswith(".") or hostname.endswith("."):
+        return False
+
+    labels = hostname.rstrip(".").split(".")
+
+    if not labels:
+        return False
+
+    for label in labels:
+
+        if not label:
+            return False
+
+        if len(label) > 63:
+            return False
+
+        if label.startswith("-") or label.endswith("-"):
+            return False
+
+        # Normal business domains should consist of
+        # letters, numbers and hyphens.
+        #
+        # Internationalised domains can contain Unicode,
+        # but malformed arbitrary text should never reach
+        # DNS resolution.
+        try:
+            ascii_label = label.encode(
+                "idna"
+            ).decode(
+                "ascii"
+            )
+        except (
+            UnicodeError,
+            UnicodeEncodeError,
+            UnicodeDecodeError,
+            ValueError
+        ):
+            return False
+
+        if len(ascii_label) > 63:
+            return False
+
+        if not re.fullmatch(
+            r"[A-Za-z0-9-]+",
+            ascii_label
+        ):
+            return False
 
     if hostname in {
         "localhost",
@@ -257,7 +336,12 @@ def _is_public_hostname(hostname):
             hostname,
             None
         )
-    except socket.gaierror:
+    except (
+        socket.gaierror,
+        UnicodeError,
+        ValueError,
+        OSError
+    ):
         return False
 
     for address in addresses:
@@ -297,13 +381,13 @@ def _is_public_hostname(hostname):
 
             try:
 
-                ip_obj = socket.inet_pton(
+                socket.inet_pton(
                     socket.AF_INET6,
                     ip
                 )
 
                 if (
-                    ip_obj == b"\x00" * 15 + b"\x01"
+                    ip.lower() == "::1"
                     or ip.lower().startswith("fe80:")
                     or ip.lower().startswith("fc")
                     or ip.lower().startswith("fd")
@@ -322,6 +406,9 @@ def _normalise_url(url):
 
     IMPORTANT:
     This function does NOT guess or construct URLs.
+
+    Malformed Gemini website values are rejected before
+    DNS resolution.
     """
 
     url = _safe_string(
@@ -331,14 +418,54 @@ def _normalise_url(url):
     if not url:
         return None
 
+    # ---------------------------------------------------------
+    # Reject obvious Gemini hallucinated / contaminated values.
+    #
+    # A genuine URL should not contain whitespace.
+    # ---------------------------------------------------------
+
+    if any(
+        character.isspace()
+        for character in url
+    ):
+        print(
+            "[external search] rejected malformed website "
+            f"containing whitespace: {url!r}",
+            flush=True
+        )
+
+        return None
+
+    if len(url) > 2048:
+        print(
+            "[external search] rejected oversized website "
+            f"value: length={len(url)}",
+            flush=True
+        )
+
+        return None
+
     if not url.startswith(
         ("http://", "https://")
     ):
         url = "https://" + url
 
-    parsed = urlparse(
-        url
-    )
+    try:
+        parsed = urlparse(
+            url
+        )
+    except (
+        ValueError,
+        UnicodeError
+    ) as exc:
+
+        print(
+            "[external search] rejected malformed website URL: "
+            f"url={url!r}, error={exc!r}",
+            flush=True
+        )
+
+        return None
 
     if parsed.scheme not in {
         "http",
@@ -346,12 +473,33 @@ def _normalise_url(url):
     }:
         return None
 
-    if not parsed.hostname:
+    try:
+        hostname = parsed.hostname
+    except (
+        ValueError,
+        UnicodeError
+    ) as exc:
+
+        print(
+            "[external search] rejected invalid hostname: "
+            f"url={url!r}, error={exc!r}",
+            flush=True
+        )
+
+        return None
+
+    if not hostname:
         return None
 
     if not _is_public_hostname(
-        parsed.hostname
+        hostname
     ):
+        print(
+            "[external search] rejected invalid/private "
+            f"website hostname: {hostname!r}",
+            flush=True
+        )
+
         return None
 
     return url
@@ -379,9 +527,15 @@ def _is_valid_business_website(url):
     if not url:
         return None
 
-    parsed = urlparse(
-        url
-    )
+    try:
+        parsed = urlparse(
+            url
+        )
+    except (
+        ValueError,
+        UnicodeError
+    ):
+        return None
 
     path = parsed.path.lower()
 
