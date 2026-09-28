@@ -1,5 +1,6 @@
 
 from datetime import datetime, timezone
+import re
 
 from backend.models.external_worker_candidate import (
     ExternalWorkerCandidate
@@ -11,14 +12,17 @@ from backend.models.external_worker_candidate import (
 # ============================================================
 
 # Trade relevance
-TRADE_WEIGHT = 0.30
+TRADE_WEIGHT = 0.25
+
+# Geographic relevance
+LOCATION_WEIGHT = 0.25
 
 # Contractor reputation
-RATING_WEIGHT = 0.25
-REVIEWS_WEIGHT = 0.15
+RATING_WEIGHT = 0.20
+REVIEWS_WEIGHT = 0.10
 
 # Availability
-AVAILABILITY_WEIGHT = 0.25
+AVAILABILITY_WEIGHT = 0.15
 
 # Small price signal
 PRICE_WEIGHT = 0.05
@@ -69,6 +73,85 @@ def _clamp(
     )
 
 
+def _normalise_location_text(
+    value
+):
+    """
+    Normalise location text for comparison.
+
+    This does NOT invent or geocode locations.
+    """
+
+    if value is None:
+        return ""
+
+    value = str(
+        value
+    ).strip().lower()
+
+    if not value:
+        return ""
+
+    value = re.sub(
+        r"[^a-z0-9\s]",
+        " ",
+        value
+    )
+
+    value = re.sub(
+        r"\s+",
+        " ",
+        value
+    ).strip()
+
+    return value
+
+
+def _location_tokens(
+    value
+):
+    """
+    Extract useful location words.
+
+    Very short/common words are ignored so that generic
+    words do not artificially increase the location score.
+    """
+
+    value = _normalise_location_text(
+        value
+    )
+
+    if not value:
+        return set()
+
+    ignored = {
+        "the",
+        "and",
+        "of",
+        "in",
+        "on",
+        "at",
+        "uk",
+        "united",
+        "kingdom",
+        "england",
+        "road",
+        "street",
+        "lane",
+        "avenue",
+        "close",
+        "court",
+        "place",
+    }
+
+    return {
+        token
+        for token in value.split()
+        if len(token) >= 3
+        and token not in ignored
+    }
+
+
 # ============================================================
 # TRADE SCORE
 # ============================================================
@@ -115,11 +198,9 @@ def _trade_score(
     if not normalised_trades:
         return 0.5
 
-    # Exact match
     if candidate_trade in normalised_trades:
         return 1.0
 
-    # Partial match
     for trade in normalised_trades:
 
         if (
@@ -128,8 +209,114 @@ def _trade_score(
         ):
             return 0.9
 
-    # No obvious trade match
     return 0.2
+
+
+# ============================================================
+# LOCATION SCORE
+# ============================================================
+
+def _location_score(
+    candidate,
+    target_location
+):
+    """
+    Score how closely the contractor's stated location
+    matches the property's target location.
+
+    This uses ONLY location information actually present
+    on the candidate and the maintenance request.
+
+    It does not invent distances or coordinates.
+
+    Strongest matches:
+
+        exact location text
+        location contained within target
+        target contained within contractor location
+        multiple meaningful location tokens
+
+    Unknown locations receive a neutral score rather than
+    being automatically penalised.
+    """
+
+    target = _normalise_location_text(
+        target_location
+    )
+
+    candidate_location = _normalise_location_text(
+        getattr(
+            candidate,
+            "location",
+            None
+        )
+    )
+
+    if not target:
+        return 0.50
+
+    if not candidate_location:
+        return 0.35
+
+    # Exact match
+    if candidate_location == target:
+        return 1.0
+
+    # One location fully contains the other
+    if (
+        candidate_location in target
+        or target in candidate_location
+    ):
+        return 0.90
+
+    target_tokens = _location_tokens(
+        target
+    )
+
+    candidate_tokens = _location_tokens(
+        candidate_location
+    )
+
+    if not target_tokens or not candidate_tokens:
+        return 0.35
+
+    overlap = (
+        target_tokens
+        & candidate_tokens
+    )
+
+    overlap_count = len(
+        overlap
+    )
+
+    target_count = len(
+        target_tokens
+    )
+
+    candidate_count = len(
+        candidate_tokens
+    )
+
+    # Strong overlap
+    if overlap_count >= 3:
+        return 0.90
+
+    if overlap_count == 2:
+        return 0.80
+
+    if overlap_count == 1:
+        # A single meaningful matching town/area/postcode
+        # is still useful evidence.
+        if (
+            target_count <= 2
+            or candidate_count <= 2
+        ):
+            return 0.75
+
+        return 0.65
+
+    # No textual overlap
+    return 0.20
 
 
 # ============================================================
@@ -151,7 +338,6 @@ def _rating_score(
         )
     )
 
-    # Missing rating is neutral
     if rating <= 0:
         return 0.5
 
@@ -215,16 +401,8 @@ def _availability_score(
         ) or ""
     ).strip().lower()
 
-    # --------------------------------------------------------
-    # No availability information
-    # --------------------------------------------------------
-
     if not availability:
         return 0.50
-
-    # --------------------------------------------------------
-    # Explicit unavailable language
-    # --------------------------------------------------------
 
     unavailable_terms = (
         "unavailable",
@@ -246,10 +424,6 @@ def _availability_score(
     ):
         return 0.0
 
-    # --------------------------------------------------------
-    # Strong availability language
-    # --------------------------------------------------------
-
     strong_available_terms = (
         "same day",
         "today",
@@ -267,10 +441,6 @@ def _availability_score(
     ):
         return 1.0
 
-    # --------------------------------------------------------
-    # General availability language
-    # --------------------------------------------------------
-
     available_terms = (
         "available",
         "this week",
@@ -286,7 +456,6 @@ def _availability_score(
     ):
         return 0.85
 
-    # Unknown wording
     return 0.50
 
 
@@ -320,9 +489,6 @@ def _price_score(
     if quoted_price <= 0:
         return 0.5
 
-    # A known quote receives a small positive signal.
-    # Actual price comparison can be added later when
-    # multiple quotes exist for the same request.
     return 0.60
 
 
@@ -332,16 +498,18 @@ def _price_score(
 
 def calculate_external_worker_score(
     candidate,
-    required_trades=None
+    required_trades=None,
+    target_location=None
 ):
     """
     Calculate the contractor's overall match score.
 
     Score is between 0 and 1.
 
-    Ranking considers ONLY:
+    Ranking considers:
 
         trade relevance
+        geographic relevance
         contractor rating
         review confidence
         availability
@@ -357,6 +525,11 @@ def calculate_external_worker_score(
     trade_score = _trade_score(
         candidate,
         required_trades
+    )
+
+    location_score = _location_score(
+        candidate,
+        target_location
     )
 
     rating_score = _rating_score(
@@ -379,6 +552,7 @@ def calculate_external_worker_score(
 
     score = (
         trade_score * TRADE_WEIGHT
+        + location_score * LOCATION_WEIGHT
         + rating_score * RATING_WEIGHT
         + review_score * REVIEWS_WEIGHT
         + availability_score * AVAILABILITY_WEIGHT
@@ -425,7 +599,8 @@ def calculate_external_worker_score(
 def build_match_reason(
     candidate,
     score,
-    required_trades=None
+    required_trades=None,
+    target_location=None
 ):
     """
     Build a human-readable explanation for the ranking.
@@ -443,6 +618,11 @@ def build_match_reason(
     trade_score = _trade_score(
         candidate,
         required_trades
+    )
+
+    location_score = _location_score(
+        candidate,
+        target_location
     )
 
     rating_score = _rating_score(
@@ -469,6 +649,34 @@ def build_match_reason(
 
         reasons.append(
             "relevant trade"
+        )
+
+    # --------------------------------------------------------
+    # Location
+    # --------------------------------------------------------
+
+    if location_score >= 0.90:
+
+        reasons.append(
+            "very close location match"
+        )
+
+    elif location_score >= 0.75:
+
+        reasons.append(
+            "strong local match"
+        )
+
+    elif location_score >= 0.60:
+
+        reasons.append(
+            "nearby service area"
+        )
+
+    elif location_score <= 0.25:
+
+        reasons.append(
+            "wider service area"
         )
 
     # --------------------------------------------------------
@@ -546,7 +754,8 @@ def build_match_reason(
 def rank_external_workers(
     maintenance_description,
     required_trades,
-    candidates
+    candidates,
+    target_location=None
 ):
     """
     Rank all external contractor candidates.
@@ -604,13 +813,15 @@ def rank_external_workers(
 
         score = calculate_external_worker_score(
             candidate=candidate,
-            required_trades=required_trades
+            required_trades=required_trades,
+            target_location=target_location
         )
 
         reason = build_match_reason(
             candidate=candidate,
             score=score,
-            required_trades=required_trades
+            required_trades=required_trades,
+            target_location=target_location
         )
 
         candidate.match_score = score
@@ -642,16 +853,22 @@ def rank_external_workers(
     ):
 
         return (
-            # Availability first
-            _availability_score(
-                candidate
-            ),
-
-            # Overall match score
+            # Overall score is the primary ranking.
             getattr(
                 candidate,
                 "match_score",
                 0
+            ),
+
+            # Location is the first tie-breaker.
+            _location_score(
+                candidate,
+                target_location
+            ),
+
+            # Availability
+            _availability_score(
+                candidate
             ),
 
             # Rating
@@ -677,4 +894,3 @@ def rank_external_workers(
     )
 
     return scored_candidates
-

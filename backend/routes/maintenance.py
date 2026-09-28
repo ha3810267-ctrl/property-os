@@ -1,4 +1,3 @@
-
 from datetime import datetime, timezone
 from html import escape
 
@@ -74,6 +73,8 @@ ALLOWED_PRIORITIES = {
     "urgent"
 }
 
+TARGET_EXTERNAL_CONTRACTORS = 20
+
 
 # ============================================================
 # HELPERS
@@ -132,7 +133,55 @@ def maintenance_request_response(
             ExternalWorkerCandidate.rating.desc().nullslast(),
             ExternalWorkerCandidate.id
         )
+        .limit(
+            TARGET_EXTERNAL_CONTRACTORS
+        )
     ).scalars().all()
+
+    messages = db.session.execute(
+        select(ExternalWorkerMessage)
+        .where(
+            ExternalWorkerMessage.maintenance_request_id
+            == maintenance_request.id
+        )
+        .order_by(
+            ExternalWorkerMessage.created_at.desc(),
+            ExternalWorkerMessage.id.desc()
+        )
+    ).scalars().all()
+
+    replies_by_candidate = {}
+
+    for message in messages:
+
+        if message.direction != "inbound":
+            continue
+
+        replies_by_candidate.setdefault(
+            message.candidate_id,
+            []
+        ).append({
+            "id": message.id,
+            "direction": message.direction,
+            "resend_message_id": message.resend_message_id,
+            "in_reply_to": message.in_reply_to,
+            "message_id": message.message_id,
+            "sender_email": message.sender_email,
+            "recipient_email": message.recipient_email,
+            "subject": message.subject,
+            "text_body": message.text_body,
+            "html_body": message.html_body,
+            "received_at": (
+                message.received_at.isoformat()
+                if message.received_at
+                else None
+            ),
+            "created_at": (
+                message.created_at.isoformat()
+                if message.created_at
+                else None
+            )
+        })
 
     return {
         "id": maintenance_request.id,
@@ -186,6 +235,11 @@ def maintenance_request_response(
                     candidate.updated_at.isoformat()
                     if candidate.updated_at
                     else None
+                ),
+
+                "replies": replies_by_candidate.get(
+                    candidate.id,
+                    []
                 )
             }
             for candidate in external_candidates
@@ -245,7 +299,7 @@ def build_external_worker_email(
     property_location
 ):
     subject = (
-       f"Maintenance request – {property_location}"
+        f"Maintenance request – {property_location}"
     )
 
     safe_category = escape(
@@ -336,8 +390,7 @@ def automatically_contact_external_workers(
 
     Contractors without an email are skipped.
 
-    Existing candidates are never passed into this function,
-    so repeating contractor discovery does not resend emails.
+    Only candidates passed into this function are contacted.
     """
 
     property_location = get_property_location_for_request(
@@ -989,7 +1042,7 @@ def remove_maintenance_assignment(
 
 # ============================================================
 # GEMINI CONTRACTOR DISCOVERY
-# + GEMINI RANKING
+# + LOCATION-AWARE RANKING
 # + AUTOMATIC EMAIL
 # ============================================================
 
@@ -1103,6 +1156,26 @@ def search_external_workers_for_request(
         )
 
     # --------------------------------------------------------
+    # Existing candidates
+    # --------------------------------------------------------
+
+    existing_candidates = db.session.execute(
+        select(ExternalWorkerCandidate)
+        .where(
+            ExternalWorkerCandidate.maintenance_request_id
+            == maintenance_request.id
+        )
+    ).scalars().all()
+
+    existing_keys = {
+        (
+            candidate.provider,
+            candidate.external_id
+        )
+        for candidate in existing_candidates
+    }
+
+    # --------------------------------------------------------
     # Gemini contractor discovery
     # --------------------------------------------------------
 
@@ -1110,7 +1183,8 @@ def search_external_workers_for_request(
         "[external search] started: "
         f"request={maintenance_request.id}, "
         f"trades={required_trades}, "
-        f"location={location!r}",
+        f"location={location!r}, "
+        f"existing={len(existing_candidates)}",
         flush=True
     )
 
@@ -1135,6 +1209,7 @@ def search_external_workers_for_request(
                 f"name={candidate.name!r}, "
                 f"trade={candidate.trade!r}, "
                 f"email={candidate.email!r}, "
+                f"location={candidate.location!r}, "
                 f"source={candidate.source_url!r}",
                 flush=True
             )
@@ -1178,22 +1253,6 @@ def search_external_workers_for_request(
     # Remove duplicates
     # --------------------------------------------------------
 
-    existing_candidates = db.session.execute(
-        select(ExternalWorkerCandidate)
-        .where(
-            ExternalWorkerCandidate.maintenance_request_id
-            == maintenance_request.id
-        )
-    ).scalars().all()
-
-    existing_keys = {
-        (
-            candidate.provider,
-            candidate.external_id
-        )
-        for candidate in existing_candidates
-    }
-
     new_candidates = []
 
     for candidate in candidates:
@@ -1232,21 +1291,30 @@ def search_external_workers_for_request(
     )
 
     # --------------------------------------------------------
-    # Gemini ranking
+    # Combine existing + new candidates
+    #
+    # Ranking is performed against the full pool so the final
+    # displayed/contacted set is the strongest 20 candidates.
     # --------------------------------------------------------
+
+    ranking_pool = (
+        list(existing_candidates)
+        + list(new_candidates)
+    )
 
     ranking_error = None
 
-    if new_candidates:
+    if ranking_pool:
 
         try:
 
-            new_candidates = rank_external_workers(
+            ranking_pool = rank_external_workers(
                 maintenance_description=(
                     maintenance_request.description
                 ),
                 required_trades=required_trades,
-                candidates=new_candidates
+                candidates=ranking_pool,
+                target_location=location
             )
 
         except Exception as exc:
@@ -1254,14 +1322,35 @@ def search_external_workers_for_request(
             ranking_error = str(exc)
 
             print(
-                "Gemini contractor ranking error:",
-                repr(exc)
+                "[external search] contractor ranking error:",
+                repr(exc),
+                flush=True
             )
 
             for candidate in new_candidates:
 
                 candidate.match_score = None
                 candidate.match_reason = None
+
+    # --------------------------------------------------------
+    # Final top 20
+    # --------------------------------------------------------
+
+    final_candidates = ranking_pool[
+        :TARGET_EXTERNAL_CONTRACTORS
+    ]
+
+    final_candidate_ids = {
+        candidate.id
+        for candidate in final_candidates
+        if candidate.id is not None
+    }
+
+    final_new_candidates = [
+        candidate
+        for candidate in final_candidates
+        if candidate in new_candidates
+    ]
 
     # --------------------------------------------------------
     # Save candidates
@@ -1272,6 +1361,9 @@ def search_external_workers_for_request(
     try:
 
         for candidate in new_candidates:
+
+            if candidate not in final_new_candidates:
+                continue
 
             db.session.add(
                 candidate
@@ -1292,7 +1384,7 @@ def search_external_workers_for_request(
             resource_id=maintenance_request.id
         )
 
-        if added_candidates:
+        if ranking_pool:
 
             create_audit_log(
                 user=user,
@@ -1329,6 +1421,9 @@ def search_external_workers_for_request(
 
     # --------------------------------------------------------
     # AUTOMATIC CONTRACTOR EMAIL
+    #
+    # Only newly discovered contractors that made the final
+    # top-20 set are contacted.
     # --------------------------------------------------------
 
     sent = []
@@ -1391,6 +1486,12 @@ def search_external_workers_for_request(
             added_candidates
         ),
 
+        "total_candidates": len(
+            final_candidates
+        ),
+
+        "target_candidates": TARGET_EXTERNAL_CONTRACTORS,
+
         "ranking": (
             "completed"
             if ranking_error is None
@@ -1414,12 +1515,21 @@ def search_external_workers_for_request(
 
         response["ranking_warning"] = (
             "Contractors were discovered successfully "
-            "but Gemini ranking failed"
+            "but contractor ranking failed"
+        )
+
+    if len(final_candidates) < TARGET_EXTERNAL_CONTRACTORS:
+
+        response["contractor_count_warning"] = (
+            "Fewer than 20 qualifying contractors "
+            "were available after geographic expansion "
+            "and public-email filtering"
         )
 
     print(
         "[external search] complete: "
         f"discovered={response['discovered']}, "
+        f"final_candidates={response['total_candidates']}, "
         f"ranking={response['ranking']}, "
         f"emails_sent={len(sent)}, "
         f"emails_skipped={len(skipped)}, "
@@ -1428,91 +1538,6 @@ def search_external_workers_for_request(
     )
 
     return response, 200
-
-
-# ============================================================
-# TEMPORARY TEST EMAIL ENDPOINT
-# ============================================================
-
-@maintenance_bp.route(
-    "/maintenance-requests/<int:maintenance_request_id>/external-workers/<int:candidate_id>/test-email",
-    methods=["POST"]
-)
-@jwt_required()
-def test_external_worker_email(
-    maintenance_request_id,
-    candidate_id
-):
-
-    user = get_current_user()
-
-    if not user:
-        return {
-            "error": "User not found"
-        }, 404
-
-    if user.role not in {
-        "admin",
-        "property_manager"
-    }:
-        return {
-            "error": (
-                "You do not have permission to "
-                "send contractor test emails"
-            )
-        }, 403
-
-    maintenance_request = (
-        get_maintenance_request_for_user(
-            maintenance_request_id,
-            user.organisation_id
-        )
-    )
-
-    if not maintenance_request:
-        return {
-            "error": (
-                "Maintenance request not found"
-            )
-        }, 404
-
-    candidate = db.session.execute(
-        select(ExternalWorkerCandidate)
-        .where(
-            ExternalWorkerCandidate.id == candidate_id,
-            ExternalWorkerCandidate.maintenance_request_id
-            == maintenance_request.id
-        )
-    ).scalar_one_or_none()
-
-    if not candidate:
-        return {
-            "error": (
-                "External contractor candidate not found"
-            )
-        }, 404
-
-    sent, skipped, failed = (
-        automatically_contact_external_workers(
-            maintenance_request=maintenance_request,
-            candidates=[candidate],
-            organisation_id=user.organisation_id
-        )
-    )
-
-    return {
-        "message": "Test contractor email attempted",
-        "candidate": {
-            "id": candidate.id,
-            "name": candidate.name,
-            "email": candidate.email
-        },
-        "emails": {
-            "sent": sent,
-            "skipped": skipped,
-            "failed": failed
-        }
-    }, 200
 
 
 # ============================================================

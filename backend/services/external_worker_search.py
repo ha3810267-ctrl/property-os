@@ -22,6 +22,8 @@ EMAIL_PATTERN = re.compile(
 MAX_PAGE_BYTES = 2_000_000
 REQUEST_TIMEOUT = 30
 
+TARGET_CONTRACTORS = 20
+
 USER_AGENT = (
     "Mozilla/5.0 "
     "(compatible; PropertyOS Contractor Research/1.0)"
@@ -750,62 +752,131 @@ def _verify_website_details(
     return result
 
 
-def search_external_workers(
-    maintenance_request_id,
-    required_trades,
-    location=None
-):
+def _location_search_tiers(location):
     """
-    Discover real external contractors using Gemini
-    with Google Search grounding.
+    Return progressively wider geographic search instructions.
 
-    Gemini provides the candidate information.
-
-    The backend:
-    - validates the returned website
-    - rejects image/static asset URLs
-    - verifies the exact returned website
-    - extracts public phone/email when present
-    - never invents missing information
-    - never constructs contact URLs
+    We deliberately search locally first and only broaden the
+    area when we still need more qualifying contractors.
     """
 
-    if not maintenance_request_id:
-        raise ValueError(
-            "maintenance_request_id is required"
-        )
-
-    trade_names = _extract_trade_names(
-        required_trades
-    )
-
-    if not trade_names:
-        return []
-
-    location_text = _safe_string(
+    location = _safe_string(
         location
     )
 
-    if not location_text:
-        location_text = (
-            "the relevant local area"
+    if not location:
+        location = "the property's local area"
+
+    return [
+        (
+            "local",
+            f"""
+Search primarily within the exact target area:
+
+{location}
+
+Prioritise businesses physically located in this area
+or clearly serving this exact area.
+Do not broaden the search unnecessarily.
+"""
+        ),
+        (
+            "nearby",
+            f"""
+Search around the target location:
+
+{location}
+
+Prioritise nearby towns, suburbs, districts and surrounding
+areas immediately adjacent to the target location.
+
+Businesses farther away should only be considered when
+there are not enough suitable businesses in the target area.
+"""
+        ),
+        (
+            "surrounding",
+            f"""
+Search the wider surrounding area around:
+
+{location}
+
+Prioritise contractors that explicitly serve the target
+location and nearby communities.
+
+Do not favour a distant business merely because it has
+more reviews.
+"""
+        ),
+        (
+            "wider",
+            f"""
+Search a wider reasonable service area around:
+
+{location}
+
+The goal is to find additional legitimate contractors
+that publicly state they serve the target location.
+
+Still prioritise businesses that are geographically close
+to the property.
+"""
+        ),
+    ]
+
+
+def _discover_provider_batch(
+    client,
+    trades_text,
+    location_instruction,
+    excluded_businesses,
+    batch_number
+):
+    """
+    Ask Gemini for another batch of real businesses.
+
+    A deliberately larger batch is requested so that after
+    public-email verification we have a good chance of
+    producing enough qualifying contractors.
+    """
+
+    excluded_text = ""
+
+    if excluded_businesses:
+
+        excluded_names = list(
+            excluded_businesses
+        )[:100]
+
+        excluded_text = (
+            "\n\nBusinesses already found. "
+            "Do NOT return these again:\n"
+            + "\n".join(
+                f"- {name}"
+                for name in excluded_names
+            )
         )
-
-    client = _get_gemini_client()
-
-    trades_text = ", ".join(
-        trade_names
-    )
 
     prompt = f"""
 Find real businesses that provide these property
 maintenance services:
 
 Trades: {trades_text}
-Location: {location_text}
+
+{location_instruction}
 
 Use Google Search grounding and current public web
 information.
+
+This is search batch {batch_number}.
+
+We ultimately need 20 qualifying contractors with
+publicly verifiable business email addresses.
+
+Return a LARGE pool of strong candidates in this batch,
+preferably around 15-20 businesses.
+
+{excluded_text}
 
 Return ONLY JSON in this format:
 
@@ -858,10 +929,10 @@ Rules:
 13. The email must be an actual publicly listed
     business email.
 
-14. The rating and review count must be supported by
-    search evidence.
+14. The location must be supported by search evidence.
 
-15. The location must be supported by search evidence.
+15. The rating and review count must be supported by
+    search evidence.
 
 16. source_url must be an actual URL from the search
     evidence.
@@ -871,13 +942,15 @@ Rules:
 18. Only return businesses relevant to the requested
     trades.
 
-19. Prefer businesses near the target location.
+19. Strongly prioritise geographic proximity to the
+    target property.
 
-20. Return up to 10 strong candidates.
+20. Prefer businesses that explicitly state they serve
+    the target area.
 
-21. A business must appear only once.
+21. Do not return businesses already listed above.
 
-22. Accuracy is more important than completeness.
+22. A business must appear only once.
 
 23. Missing information must be null.
 
@@ -1086,201 +1159,320 @@ Rules:
     ):
         return []
 
-    print(
-        "[external search] Gemini providers before validation: "
-        f"{len(providers)}",
-        flush=True
+    return providers
+
+
+def search_external_workers(
+    maintenance_request_id,
+    required_trades,
+    location=None
+):
+    """
+    Discover exactly up to 20 qualifying external contractors.
+
+    Search strategy:
+
+    1. Exact local area
+    2. Nearby areas
+    3. Wider surrounding area
+    4. Wider service area
+
+    Contractors without a publicly verified email are
+    excluded.
+
+    The search continues into wider geographic areas until
+    20 qualifying contractors have been found or the
+    available search results are exhausted.
+    """
+
+    if not maintenance_request_id:
+        raise ValueError(
+            "maintenance_request_id is required"
+        )
+
+    trade_names = _extract_trade_names(
+        required_trades
+    )
+
+    if not trade_names:
+        return []
+
+    location_text = _safe_string(
+        location
+    )
+
+    if not location_text:
+        location_text = (
+            "the property's local area"
+        )
+
+    client = _get_gemini_client()
+
+    trades_text = ", ".join(
+        trade_names
+    )
+
+    location_tiers = _location_search_tiers(
+        location_text
     )
 
     candidates = []
 
     seen_businesses = set()
+    seen_emails = set()
 
-    for provider in providers:
+    for tier_name, location_instruction in location_tiers:
 
-        if not isinstance(
-            provider,
-            dict
-        ):
-            continue
-
-        name = _safe_string(
-            provider.get("name")
-        )
-
-        if not name:
-            continue
-
-        trade = _normalise_trade(
-            provider.get("trade")
-        )
-
-        if not trade:
-            continue
-
-        if trade not in trade_names:
-
-            print(
-                "[external search] rejected provider: "
-                f"trade mismatch name={name!r}, "
-                f"trade={trade!r}",
-                flush=True
-            )
-
-            continue
-
-        business_key = (
-            name.lower(),
-            trade
-        )
-
-        if business_key in seen_businesses:
-
-            print(
-                "[external search] rejected duplicate: "
-                f"{name!r}",
-                flush=True
-            )
-
-            continue
-
-        seen_businesses.add(
-            business_key
-        )
-
-        location_value = _safe_string(
-            provider.get("location")
-        )
-
-        rating = _safe_float(
-            provider.get("rating")
-        )
-
-        review_count = _safe_int(
-            provider.get("review_count")
-        )
-
-        availability = _safe_string(
-            provider.get("availability")
-        )
-
-        # -------------------------------------------------
-        # WEBSITE
-        #
-        # This rejects image URLs and static assets.
-        # It never guesses a replacement.
-        # -------------------------------------------------
-
-        website = _is_valid_business_website(
-            provider.get("website")
-        )
-
-        # -------------------------------------------------
-        # CONTACT DETAILS
-        #
-        # Start with Gemini's values only.
-        # Nothing is generated.
-        # -------------------------------------------------
-
-        phone = _normalise_phone(
-            provider.get("phone")
-        )
-
-        email = _normalise_email(
-            provider.get("email")
-        )
-
-        # -------------------------------------------------
-        # VERIFY EXACT WEBSITE
-        #
-        # No /contact
-        # No /about
-        # No guessed paths.
-        # -------------------------------------------------
-
-        if website:
-
-            verified = _verify_website_details(
-                provider=provider,
-                website=website
-            )
-
-            if verified.get("phone"):
-                phone = verified[
-                    "phone"
-                ]
-
-            if verified.get("email"):
-                email = verified[
-                    "email"
-                ]
-
-        source_url = _normalise_url(
-            provider.get(
-                "source_url"
-            )
-        )
-
-        external_id = (
-            f"gemini-web-"
-            f"{maintenance_request_id}-"
-            f"{len(candidates) + 1}"
-        )
-
-        candidate = ExternalWorkerCandidate(
-            maintenance_request_id=(
-                maintenance_request_id
-            ),
-
-            provider="gemini_web_search",
-
-            external_id=external_id,
-
-            name=name,
-
-            trade=trade,
-
-            location=location_value,
-
-            rating=rating,
-
-            review_count=review_count,
-
-            availability=availability,
-
-            website=website,
-
-            phone=phone,
-
-            email=email,
-
-            source_url=source_url,
-
-          
-        )
-
-        candidates.append(
-            candidate
-        )
+        if len(candidates) >= TARGET_CONTRACTORS:
+            break
 
         print(
-            "[external search] candidate: "
-            f"name={name!r}, "
-            f"trade={trade!r}, "
-            f"website={website!r}, "
-            f"phone={phone!r}, "
-            f"email={email!r}, "
-            f"source={source_url!r}",
+            "[external search] starting location tier: "
+            f"{tier_name!r}, "
+            f"current qualifying candidates="
+            f"{len(candidates)}",
             flush=True
         )
 
+        # Two searches per geographic tier gives Gemini
+        # more opportunities to find genuinely different
+        # businesses while still keeping the search bounded.
+        for batch_number in range(1, 3):
+
+            if len(candidates) >= TARGET_CONTRACTORS:
+                break
+
+            providers = _discover_provider_batch(
+                client=client,
+                trades_text=trades_text,
+                location_instruction=location_instruction,
+                excluded_businesses=seen_businesses,
+                batch_number=batch_number
+            )
+
+            print(
+                "[external search] providers returned: "
+                f"tier={tier_name!r}, "
+                f"batch={batch_number}, "
+                f"count={len(providers)}",
+                flush=True
+            )
+
+            for provider in providers:
+
+                if len(candidates) >= TARGET_CONTRACTORS:
+                    break
+
+                if not isinstance(
+                    provider,
+                    dict
+                ):
+                    continue
+
+                name = _safe_string(
+                    provider.get("name")
+                )
+
+                if not name:
+                    continue
+
+                trade = _normalise_trade(
+                    provider.get("trade")
+                )
+
+                if not trade:
+                    continue
+
+                if trade not in trade_names:
+
+                    print(
+                        "[external search] rejected provider: "
+                        f"trade mismatch name={name!r}, "
+                        f"trade={trade!r}",
+                        flush=True
+                    )
+
+                    continue
+
+                business_key = (
+                    name.lower(),
+                    trade
+                )
+
+                if business_key in seen_businesses:
+
+                    print(
+                        "[external search] rejected duplicate: "
+                        f"{name!r}",
+                        flush=True
+                    )
+
+                    continue
+
+                seen_businesses.add(
+                    business_key
+                )
+
+                location_value = _safe_string(
+                    provider.get("location")
+                )
+
+                rating = _safe_float(
+                    provider.get("rating")
+                )
+
+                review_count = _safe_int(
+                    provider.get("review_count")
+                )
+
+                availability = _safe_string(
+                    provider.get("availability")
+                )
+
+                website = _is_valid_business_website(
+                    provider.get("website")
+                )
+
+                phone = _normalise_phone(
+                    provider.get("phone")
+                )
+
+                email = _normalise_email(
+                    provider.get("email")
+                )
+
+                # -------------------------------------------------
+                # VERIFY EXACT WEBSITE
+                #
+                # This is the important email gate.
+                #
+                # A Gemini-provided email is not enough on its own.
+                # The exact business website is checked and its
+                # publicly visible email is used when available.
+                # -------------------------------------------------
+
+                if website:
+
+                    verified = _verify_website_details(
+                        provider=provider,
+                        website=website
+                    )
+
+                    if verified.get("phone"):
+                        phone = verified[
+                            "phone"
+                        ]
+
+                    if verified.get("email"):
+                        email = verified[
+                            "email"
+                        ]
+
+                # -------------------------------------------------
+                # PUBLIC EMAIL REQUIREMENT
+                #
+                # No email = do not include the contractor.
+                # -------------------------------------------------
+
+                if not email:
+
+                    print(
+                        "[external search] rejected contractor "
+                        "without public email: "
+                        f"name={name!r}",
+                        flush=True
+                    )
+
+                    continue
+
+                if email in seen_emails:
+
+                    print(
+                        "[external search] rejected duplicate "
+                        f"email: {email!r}",
+                        flush=True
+                    )
+
+                    continue
+
+                seen_emails.add(
+                    email
+                )
+
+                external_id = (
+                    f"gemini-web-"
+                    f"{maintenance_request_id}-"
+                    f"{len(candidates) + 1}"
+                )
+
+                source_url = _normalise_url(
+                    provider.get(
+                        "source_url"
+                    )
+                )
+
+                candidate = ExternalWorkerCandidate(
+                    maintenance_request_id=(
+                        maintenance_request_id
+                    ),
+
+                    provider="gemini_web_search",
+
+                    external_id=external_id,
+
+                    name=name,
+
+                    trade=trade,
+
+                    location=location_value,
+
+                    rating=rating,
+
+                    review_count=review_count,
+
+                    availability=availability,
+
+                    website=website,
+
+                    phone=phone,
+
+                    email=email,
+
+                    source_url=source_url,
+                )
+
+                candidates.append(
+                    candidate
+                )
+
+                print(
+                    "[external search] QUALIFYING "
+                    f"contractor {len(candidates)}/"
+                    f"{TARGET_CONTRACTORS}: "
+                    f"name={name!r}, "
+                    f"trade={trade!r}, "
+                    f"location={location_value!r}, "
+                    f"email={email!r}, "
+                    f"tier={tier_name!r}",
+                    flush=True
+                )
+
     print(
-        "[external search] valid candidates created: "
-        f"{len(candidates)}",
+        "[external search] final qualifying candidates: "
+        f"{len(candidates)}/{TARGET_CONTRACTORS}",
         flush=True
     )
 
-    return candidates
+    if len(candidates) < TARGET_CONTRACTORS:
+
+        print(
+            "[external search] WARNING: fewer than 20 "
+            "qualifying contractors were found after "
+            "all geographic search tiers.",
+            flush=True
+        )
+
+    return candidates[:TARGET_CONTRACTORS]
 
 
 def find_contractors_with_gemini(

@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react"
 import {
   Wrench,
@@ -13,6 +12,9 @@ import {
   Phone,
   MapPin,
   Star,
+  ChevronDown,
+  ChevronUp,
+  Mail,
 } from "lucide-react"
 import { apiRequest } from "../services/api"
 
@@ -54,6 +56,8 @@ export default function Maintenance() {
 
   const [selectingExternalWorker, setSelectingExternalWorker] =
     useState(null)
+
+  const [expandedReplies, setExpandedReplies] = useState({})
 
   async function loadData() {
     try {
@@ -114,6 +118,58 @@ export default function Maintenance() {
   useEffect(() => {
     loadData()
   }, [])
+
+  function toggleReply(requestId, candidateId, replyId) {
+    const key = `${requestId}-${candidateId}-${replyId}`
+
+    setExpandedReplies((current) => ({
+      ...current,
+      [key]: !current[key],
+    }))
+  }
+
+  function isReplyExpanded(
+    requestId,
+    candidateId,
+    replyId
+  ) {
+    const key = `${requestId}-${candidateId}-${replyId}`
+
+    return expandedReplies[key] === true
+  }
+
+  function getContractorReplies(worker) {
+    return Array.isArray(worker?.replies)
+      ? worker.replies.filter(
+          (reply) =>
+            reply.direction === "inbound"
+        )
+      : []
+  }
+
+  function formatReplyDate(date) {
+    if (!date) return ""
+
+    const parsed = new Date(date)
+
+    if (Number.isNaN(parsed.getTime())) {
+      return ""
+    }
+
+    return parsed.toLocaleString()
+  }
+
+  function getReplyContent(reply) {
+    if (reply?.text_body) {
+      return reply.text_body
+    }
+
+    if (reply?.html_body) {
+      return reply.html_body
+    }
+
+    return "No reply content was provided."
+  }
 
   function openModal() {
     setDescription("")
@@ -991,8 +1047,9 @@ export default function Maintenance() {
                                 </h3>
 
                                 <p>
-                                  Additional contractors
-                                  matched to this request.
+                                  Contractors matched to this request.
+                                  Those with public email addresses are
+                                  contacted automatically.
                                 </p>
                               </div>
                             </div>
@@ -1000,7 +1057,6 @@ export default function Maintenance() {
                             {selectedExternalWorker ? (
                               <div className="external-worker-card selected">
                                 <div className="external-worker-main">
-
                                   <div className="external-worker-card-header">
                                     <div className="external-worker-identity">
                                       <strong>
@@ -1169,6 +1225,28 @@ export default function Maintenance() {
                                       }
                                     </p>
                                   )}
+
+                                  <ContractorReplies
+                                    requestId={request.id}
+                                    worker={
+                                      selectedExternalWorker
+                                    }
+                                    expandedReplies={
+                                      expandedReplies
+                                    }
+                                    toggleReply={
+                                      toggleReply
+                                    }
+                                    isReplyExpanded={
+                                      isReplyExpanded
+                                    }
+                                    formatReplyDate={
+                                      formatReplyDate
+                                    }
+                                    getReplyContent={
+                                      getReplyContent
+                                    }
+                                  />
                                 </div>
                               </div>
                             ) : (
@@ -1195,7 +1273,6 @@ export default function Maintenance() {
                                         key={`${request.id}-${worker.provider}-${worker.external_id}`}
                                       >
                                         <div className="external-worker-main">
-
                                           <div className="external-worker-card-header">
                                             <div className="external-worker-identity">
                                               <strong>
@@ -1379,6 +1456,30 @@ export default function Maintenance() {
                                               }
                                             </p>
                                           )}
+
+                                          <ContractorReplies
+                                            requestId={
+                                              request.id
+                                            }
+                                            worker={
+                                              worker
+                                            }
+                                            expandedReplies={
+                                              expandedReplies
+                                            }
+                                            toggleReply={
+                                              toggleReply
+                                            }
+                                            isReplyExpanded={
+                                              isReplyExpanded
+                                            }
+                                            formatReplyDate={
+                                              formatReplyDate
+                                            }
+                                            getReplyContent={
+                                              getReplyContent
+                                            }
+                                          />
                                         </div>
 
                                         <div className="external-worker-action">
@@ -1734,3 +1835,159 @@ export default function Maintenance() {
   )
 }
 
+function ContractorReplies({
+  requestId,
+  worker,
+  expandedReplies,
+  toggleReply,
+  isReplyExpanded,
+  formatReplyDate,
+  getReplyContent,
+}) {
+  const replies = Array.isArray(worker?.replies)
+    ? worker.replies.filter(
+        (reply) =>
+          reply.direction === "inbound"
+      )
+    : []
+
+  if (replies.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="contractor-replies">
+      <div className="contractor-replies-header">
+        <div>
+          <div className="section-label">
+            Contractor replies
+          </div>
+
+          <p>
+            {replies.length}{" "}
+            {replies.length === 1
+              ? "reply"
+              : "replies"}{" "}
+            received
+          </p>
+        </div>
+
+        <div className="contractor-reply-count">
+          <Mail size={14} />
+          {replies.length}
+        </div>
+      </div>
+
+      <div className="contractor-reply-list">
+        {replies.map((reply, index) => {
+          const replyId =
+            reply.id ??
+            reply.resend_message_id ??
+            reply.message_id ??
+            index
+
+          const expanded =
+            isReplyExpanded(
+              requestId,
+              worker.id,
+              replyId
+            )
+
+          return (
+            <div
+              className="contractor-reply"
+              key={replyId}
+            >
+              <button
+                type="button"
+                className="contractor-reply-toggle"
+                onClick={() =>
+                  toggleReply(
+                    requestId,
+                    worker.id,
+                    replyId
+                  )
+                }
+                aria-expanded={expanded}
+              >
+                <div className="contractor-reply-summary">
+                  <Mail size={15} />
+
+                  <div>
+                    <strong>
+                      {reply.sender_email ||
+                        worker.email ||
+                        "Contractor reply"}
+                    </strong>
+
+                    <span>
+                      {reply.subject ||
+                        "Reply received"}
+
+                      {reply.received_at &&
+                        ` · ${formatReplyDate(
+                          reply.received_at
+                        )}`}
+                    </span>
+                  </div>
+                </div>
+
+                {expanded ? (
+                  <ChevronUp size={17} />
+                ) : (
+                  <ChevronDown size={17} />
+                )}
+              </button>
+
+              {expanded && (
+                <div className="contractor-reply-body">
+                  {reply.subject && (
+                    <div className="contractor-reply-subject">
+                      <strong>
+                        Subject
+                      </strong>
+
+                      <span>
+                        {reply.subject}
+                      </span>
+                    </div>
+                  )}
+
+                  {reply.sender_email && (
+                    <div className="contractor-reply-meta">
+                      <strong>
+                        From
+                      </strong>
+
+                      <span>
+                        {reply.sender_email}
+                      </span>
+                    </div>
+                  )}
+
+                  {reply.recipient_email && (
+                    <div className="contractor-reply-meta">
+                      <strong>
+                        To
+                      </strong>
+
+                      <span>
+                        {reply.recipient_email}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="contractor-reply-content">
+                    <pre>
+                      {getReplyContent(reply)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
