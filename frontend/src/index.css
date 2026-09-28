@@ -15,7 +15,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.95), transparent 35%),
+    radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.98), transparent 32%),
+    radial-gradient(circle at 88% 18%, rgba(232, 238, 255, 0.38), transparent 28%),
     #f5f7fb;
 }
 
@@ -941,6 +942,7 @@ button {
 
 .maintenance-page {
   max-width: 1440px;
+  overflow-x: hidden;
 }
 
 .properties-header {
@@ -1031,26 +1033,51 @@ button {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
 }
 
 .maintenance-card {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: flex-start;
   gap: 18px;
   padding: 20px;
+  overflow: hidden;
   border: 1px solid rgba(226, 229, 235, 0.95);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.82);
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.88),
+      rgba(248, 250, 253, 0.76)
+    );
   box-shadow:
     0 1px 2px rgba(20, 24, 35, 0.025),
     0 10px 28px rgba(20, 24, 35, 0.035);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  isolation: isolate;
+}
+
+.maintenance-card::before {
+  content: "";
+  position: absolute;
+  top: -100px;
+  right: -100px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  filter: blur(30px);
+  pointer-events: none;
+  z-index: -1;
 }
 
 .maintenance-card-main {
   min-width: 0;
+  max-width: 100%;
   flex: 1;
   display: flex;
   gap: 15px;
@@ -1063,15 +1090,18 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #e5e7ec;
+  border: 1px solid rgba(229, 231, 236, 0.9);
   border-radius: 12px;
   background: linear-gradient(145deg, #fafbfc, #f1f3f6);
   color: #6f7683;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .maintenance-content {
   min-width: 0;
+  max-width: 100%;
   flex: 1;
+  overflow: hidden;
 }
 
 .maintenance-top {
@@ -1079,14 +1109,18 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .maintenance-top h2 {
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
   color: #20242c;
   font-size: 16px;
   font-weight: 680;
   letter-spacing: -0.025em;
+  text-overflow: ellipsis;
 }
 
 .maintenance-description {
@@ -1094,6 +1128,7 @@ button {
   color: #727986;
   font-size: 13px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .maintenance-meta {
@@ -1111,6 +1146,7 @@ button {
 }
 
 .maintenance-controls {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1121,14 +1157,16 @@ button {
   padding: 7px 28px 7px 10px;
   border: 1px solid #e0e3e8;
   border-radius: 10px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.86);
   color: #555c68;
   font-size: 12px;
   outline: none;
+  box-shadow: 0 1px 2px rgba(20, 24, 35, 0.025);
 }
 
 .maintenance-controls select:focus {
   border-color: #cbd0d8;
+  box-shadow: 0 0 0 4px rgba(100, 110, 130, 0.055);
 }
 
 /* ============================================================
@@ -1171,7 +1209,7 @@ button {
   padding: 5px 8px;
   border: 1px solid #e6e8ed;
   border-radius: 999px;
-  background: #f8f9fa;
+  background: rgba(248, 249, 250, 0.85);
   color: #858b97;
   font-size: 10px;
   font-weight: 600;
@@ -1182,6 +1220,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .assignment-info {
@@ -1207,7 +1246,7 @@ button {
   padding: 7px 8px 7px 10px;
   border: 1px solid #e8eaee;
   border-radius: 10px;
-  background: #fafbfc;
+  background: rgba(250, 251, 252, 0.86);
 }
 
 .assignment-worker {
@@ -1250,11 +1289,20 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
+  min-width: 0;
   margin-top: 16px;
   padding: 13px 14px;
-  border: 1px solid #e9ebef;
-  border-radius: 13px;
-  background: #fafbfc;
+  border: 1px solid rgba(225, 228, 235, 0.9);
+  border-radius: 14px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(250, 251, 253, 0.9),
+      rgba(244, 246, 250, 0.7)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 4px 14px rgba(20, 24, 35, 0.025);
 }
 
 .external-worker-search .secondary-button {
@@ -1266,15 +1314,20 @@ button {
    ============================================================ */
 
 .external-worker-section {
+  min-width: 0;
+  max-width: 100%;
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid #eef0f3;
+  overflow: hidden;
 }
 
 .external-worker-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 15px;
+  min-width: 0;
   margin-bottom: 12px;
 }
 
@@ -1326,6 +1379,8 @@ button {
    ============================================================ */
 
 .external-worker-list {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -1333,13 +1388,23 @@ button {
 
 .external-worker-card {
   min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  overflow: hidden;
   padding: 13px;
-  border: 1px solid #e6e8ed;
-  border-radius: 14px;
-  background: rgba(251, 252, 253, 0.9);
+  border: 1px solid rgba(230, 232, 237, 0.95);
+  border-radius: 15px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(252, 253, 254, 0.92),
+      rgba(247, 249, 252, 0.78)
+    );
+  box-shadow:
+    0 1px 2px rgba(20, 24, 35, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease,
@@ -1348,17 +1413,20 @@ button {
 
 .external-worker-card:hover {
   border-color: #dfe2e7;
-  box-shadow: 0 7px 18px rgba(20, 24, 35, 0.045);
+  box-shadow:
+    0 7px 18px rgba(20, 24, 35, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transform: translateY(-1px);
 }
 
 .external-worker-card.selected {
   border-color: #dfe2e7;
-  background: #fafbfc;
+  background: rgba(250, 251, 252, 0.92);
 }
 
 .external-worker-main {
   min-width: 0;
+  max-width: 100%;
 }
 
 .external-worker-heading {
@@ -1366,6 +1434,7 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
   margin-bottom: 10px;
 }
 
@@ -1399,7 +1468,7 @@ button {
   padding: 5px 7px;
   border: 1px solid #e3e5ea;
   border-radius: 8px;
-  background: #f5f6f8;
+  background: rgba(245, 246, 248, 0.88);
 }
 
 .match-score-badge span {
@@ -1420,6 +1489,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  min-width: 0;
   margin-bottom: 11px;
 }
 
@@ -1433,7 +1503,7 @@ button {
   padding: 7px 8px;
   border: 1px solid #eceef1;
   border-radius: 8px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.76);
   color: #737a86;
   font-size: 10px;
   line-height: 1.35;
@@ -1455,8 +1525,6 @@ button {
   color: #454b56;
 }
 
-/* Phone and email spacing */
-
 .contractor-details .contractor-phone {
   margin-bottom: 3px;
 }
@@ -1464,8 +1532,6 @@ button {
 .contractor-details .contractor-email {
   margin-top: 3px;
 }
-
-/* Website always starts on its own row */
 
 .contractor-details .contractor-website {
   margin-top: 5px;
@@ -1524,6 +1590,7 @@ button {
   color: #858b96;
   font-size: 10px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 /* ============================================================
@@ -1566,6 +1633,227 @@ button {
   color: #68736d;
   font-size: 9px;
   font-weight: 700;
+}
+
+/* ============================================================
+   CONTRACTOR REPLIES
+   ============================================================ */
+
+.contractor-replies {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 12px;
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(224, 227, 235, 0.95);
+  border-radius: 13px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(247, 249, 253, 0.92),
+      rgba(242, 245, 250, 0.78)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 4px 14px rgba(20, 24, 35, 0.025);
+}
+
+.contractor-replies-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 2px 2px 6px;
+}
+
+.contractor-replies-header > div:first-child {
+  min-width: 0;
+}
+
+.contractor-replies-header .section-label {
+  color: #3f4652;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.contractor-replies-header p {
+  margin: 3px 0 0;
+  color: #969ca8;
+  font-size: 10px;
+}
+
+.contractor-reply-count {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid rgba(220, 224, 232, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #777f8c;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.contractor-reply-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.contractor-reply {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(226, 229, 235, 0.9);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 1px 2px rgba(20, 24, 35, 0.018),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.contractor-reply-toggle {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.contractor-reply-toggle:hover {
+  background: rgba(248, 250, 253, 0.9);
+}
+
+.contractor-reply-toggle > svg {
+  flex-shrink: 0;
+  color: #9299a6;
+}
+
+.contractor-reply-summary {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.contractor-reply-summary > svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  color: #7d8592;
+}
+
+.contractor-reply-summary > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.contractor-reply-summary strong {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: #414752;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.contractor-reply-summary span {
+  display: block;
+  max-width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #989eaa;
+  font-size: 9px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.contractor-reply-body {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 10px 10px;
+  border-top: 1px solid rgba(236, 238, 243, 0.95);
+}
+
+.contractor-reply-subject,
+.contractor-reply-meta {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(240, 242, 246, 0.9);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.contractor-reply-subject strong,
+.contractor-reply-meta strong {
+  flex-shrink: 0;
+  min-width: 42px;
+  color: #858c98;
+  font-weight: 700;
+}
+
+.contractor-reply-subject span,
+.contractor-reply-meta span {
+  min-width: 0;
+  color: #555c68;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.contractor-reply-content {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(228, 231, 237, 0.95);
+  border-radius: 9px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(249, 250, 252, 0.95),
+      rgba(245, 247, 250, 0.88)
+    );
+}
+
+.contractor-reply-content pre {
+  width: 100%;
+  max-width: 100%;
+  max-height: 280px;
+  margin: 0;
+  padding: 11px;
+  overflow-x: auto;
+  overflow-y: auto;
+  color: #4b5260;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  scrollbar-width: thin;
 }
 
 /* ============================================================
@@ -1732,6 +2020,10 @@ button {
   .external-worker-search .secondary-button {
     width: 100%;
   }
+
+  .contractor-reply-content pre {
+    max-height: 240px;
+  }
 }
 
 @media (max-width: 520px) {
@@ -1813,5 +2105,23 @@ button {
 
   .external-worker-heading {
     gap: 7px;
+  }
+
+  .contractor-replies {
+    padding: 8px;
+  }
+
+  .contractor-reply-toggle {
+    padding: 9px;
+  }
+
+  .contractor-reply-body {
+    padding: 0 9px 9px;
+  }
+
+  .contractor-reply-content pre {
+    max-height: 220px;
+    padding: 9px;
+    font-size: 9px;
   }
 }
