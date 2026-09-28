@@ -2,6 +2,7 @@ import json
 import os
 import re
 import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -19,7 +20,13 @@ EMAIL_PATTERN = re.compile(
 )
 
 MAX_PAGE_BYTES = 2_000_000
-REQUEST_TIMEOUT = 30
+
+# Website requests now run concurrently, so a slow website
+# does not block all of the other contractor checks.
+REQUEST_TIMEOUT = 10
+
+# Maximum number of websites checked simultaneously.
+MAX_PARALLEL_WEBSITE_CHECKS = 8
 
 TARGET_CONTRACTORS = 20
 
@@ -255,19 +262,9 @@ def _is_public_hostname(hostname):
     if not hostname:
         return False
 
-    # ---------------------------------------------------------
-    # STRICT HOSTNAME VALIDATION
-    #
     # DNS hostnames have a maximum total length of 253
     # characters and each individual label may be at most
     # 63 characters.
-    #
-    # This prevents malformed Gemini output from reaching
-    # socket.getaddrinfo(), which can otherwise raise:
-    #
-    # UnicodeEncodeError: 'idna' codec ... label too long
-    # ---------------------------------------------------------
-
     if len(hostname) > 253:
         return False
 
@@ -296,12 +293,6 @@ def _is_public_hostname(hostname):
         if label.startswith("-") or label.endswith("-"):
             return False
 
-        # Normal business domains should consist of
-        # letters, numbers and hyphens.
-        #
-        # Internationalised domains can contain Unicode,
-        # but malformed arbitrary text should never reach
-        # DNS resolution.
         try:
             ascii_label = label.encode(
                 "idna"
@@ -417,12 +408,6 @@ def _normalise_url(url):
 
     if not url:
         return None
-
-    # ---------------------------------------------------------
-    # Reject obvious Gemini hallucinated / contaminated values.
-    #
-    # A genuine URL should not contain whitespace.
-    # ---------------------------------------------------------
 
     if any(
         character.isspace()
@@ -904,6 +889,154 @@ def _verify_website_details(
         )
 
     return result
+
+
+def _verify_provider_website(provider):
+    """
+    Verify one provider website.
+
+    This helper is intentionally isolated so multiple
+    contractor websites can be checked concurrently.
+    """
+
+    website = _is_valid_business_website(
+        provider.get("website")
+    )
+
+    if not website:
+        return {
+            "website": None,
+            "email": None,
+            "phone": None,
+        }
+
+    try:
+        verified = _verify_website_details(
+            provider=provider,
+            website=website
+        )
+    except Exception as exc:
+
+        print(
+            "[external search] parallel website verification "
+            f"failed: name={provider.get('name')!r}, "
+            f"website={website!r}, error={exc!r}",
+            flush=True
+        )
+
+        return {
+            "website": website,
+            "email": None,
+            "phone": None,
+        }
+
+    return {
+        "website": website,
+        "email": verified.get("email"),
+        "phone": verified.get("phone"),
+    }
+
+
+def _verify_provider_websites_parallel(providers):
+    """
+    Verify all usable provider websites concurrently.
+
+    Results are returned in the SAME ORDER as providers,
+    so the rest of the discovery pipeline remains deterministic.
+    """
+
+    results = [
+        {
+            "website": None,
+            "email": None,
+            "phone": None,
+        }
+        for _ in providers
+    ]
+
+    website_indexes = []
+
+    for index, provider in enumerate(providers):
+
+        if not isinstance(
+            provider,
+            dict
+        ):
+            continue
+
+        website = _is_valid_business_website(
+            provider.get("website")
+        )
+
+        if website:
+            website_indexes.append(
+                index
+            )
+
+    if not website_indexes:
+        return results
+
+    print(
+        "[external search] starting parallel website "
+        f"verification: "
+        f"{len(website_indexes)} websites, "
+        f"max_workers={MAX_PARALLEL_WEBSITE_CHECKS}",
+        flush=True
+    )
+
+    with ThreadPoolExecutor(
+        max_workers=MAX_PARALLEL_WEBSITE_CHECKS
+    ) as executor:
+
+        futures = {
+            executor.submit(
+                _verify_provider_website,
+                providers[index]
+            ): index
+            for index in website_indexes
+        }
+
+        for future in as_completed(
+            futures
+        ):
+
+            index = futures[
+                future
+            ]
+
+            try:
+
+                results[index] = (
+                    future.result()
+                )
+
+            except Exception as exc:
+
+                provider = providers[index]
+
+                print(
+                    "[external search] unexpected parallel "
+                    "verification error: "
+                    f"name={provider.get('name')!r}, "
+                    f"error={exc!r}",
+                    flush=True
+                )
+
+                results[index] = {
+                    "website": _is_valid_business_website(
+                        provider.get("website")
+                    ),
+                    "email": None,
+                    "phone": None,
+                }
+
+    print(
+        "[external search] parallel website verification "
+        "complete",
+        flush=True
+    )
+
+    return results
 
 
 def _location_search_tiers(location):
@@ -1412,6 +1545,17 @@ def search_external_workers(
                 flush=True
             )
 
+            # -----------------------------------------------------
+            # PRE-FILTER PROVIDERS
+            #
+            # Do all cheap validation first.
+            # Website verification is the expensive operation,
+            # so only valid providers with a usable website
+            # reach the parallel executor.
+            # -----------------------------------------------------
+
+            prepared_providers = []
+
             for provider in providers:
 
                 if len(candidates) >= TARGET_CONTRACTORS:
@@ -1467,6 +1611,50 @@ def search_external_workers(
                     business_key
                 )
 
+                prepared_providers.append(
+                    provider
+                )
+
+            if not prepared_providers:
+                continue
+
+            # -----------------------------------------------------
+            # PARALLEL WEBSITE VERIFICATION
+            #
+            # Previously this happened one contractor at a time.
+            #
+            # Now up to 8 websites are checked simultaneously.
+            # -----------------------------------------------------
+
+            verification_results = (
+                _verify_provider_websites_parallel(
+                    prepared_providers
+                )
+            )
+
+            # -----------------------------------------------------
+            # PROCESS VERIFIED RESULTS
+            #
+            # This remains sequential intentionally so candidate
+            # ordering, duplicate email detection and candidate
+            # IDs stay deterministic.
+            # -----------------------------------------------------
+
+            for index, provider in enumerate(
+                prepared_providers
+            ):
+
+                if len(candidates) >= TARGET_CONTRACTORS:
+                    break
+
+                name = _safe_string(
+                    provider.get("name")
+                )
+
+                trade = _normalise_trade(
+                    provider.get("trade")
+                )
+
                 location_value = _safe_string(
                     provider.get("location")
                 )
@@ -1483,8 +1671,20 @@ def search_external_workers(
                     provider.get("availability")
                 )
 
-                website = _is_valid_business_website(
-                    provider.get("website")
+                verification = (
+                    verification_results[index]
+                    if index < len(
+                        verification_results
+                    )
+                    else {
+                        "website": None,
+                        "email": None,
+                        "phone": None,
+                    }
+                )
+
+                website = verification.get(
+                    "website"
                 )
 
                 phone = _normalise_phone(
@@ -1495,32 +1695,17 @@ def search_external_workers(
                     provider.get("email")
                 )
 
-                # -------------------------------------------------
-                # VERIFY EXACT WEBSITE
-                #
-                # This is the important email gate.
-                #
-                # A Gemini-provided email is not enough on its own.
-                # The exact business website is checked and its
-                # publicly visible email is used when available.
-                # -------------------------------------------------
+                # Prefer information actually found on the
+                # exact verified business website.
+                if verification.get("phone"):
+                    phone = verification[
+                        "phone"
+                    ]
 
-                if website:
-
-                    verified = _verify_website_details(
-                        provider=provider,
-                        website=website
-                    )
-
-                    if verified.get("phone"):
-                        phone = verified[
-                            "phone"
-                        ]
-
-                    if verified.get("email"):
-                        email = verified[
-                            "email"
-                        ]
+                if verification.get("email"):
+                    email = verification[
+                        "email"
+                    ]
 
                 # -------------------------------------------------
                 # PUBLIC EMAIL REQUIREMENT
