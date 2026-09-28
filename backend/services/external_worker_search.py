@@ -1,3 +1,4 @@
+
 import json
 import os
 import re
@@ -30,11 +31,18 @@ MAX_PARALLEL_WEBSITE_CHECKS = 8
 
 TARGET_CONTRACTORS = 20
 
+# Gemini gets one retry when it returns malformed JSON.
+MAX_GEMINI_JSON_ATTEMPTS = 2
+
 USER_AGENT = (
     "Mozilla/5.0 "
     "(compatible; PropertyOS Contractor Research/1.0)"
 )
 
+
+# ============================================================
+# GEMINI
+# ============================================================
 
 def _get_gemini_client():
     api_key = os.getenv("GEMINI_API_KEY")
@@ -71,6 +79,76 @@ def _clean_json_response(text):
 
     return text.strip()
 
+
+def _extract_json_object(text):
+    """
+    Extract the outermost JSON object if Gemini wrapped
+    the JSON in additional text.
+
+    This does NOT attempt to repair malformed JSON.
+    It only removes surrounding non-JSON content.
+    """
+
+    if not text:
+        return ""
+
+    text = text.strip()
+
+    if text.startswith("{") and text.endswith("}"):
+        return text
+
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start == -1 or end == -1 or end <= start:
+        return text
+
+    return text[start:end + 1].strip()
+
+
+def _parse_provider_json(output):
+    """
+    Parse Gemini provider JSON safely.
+
+    First try the complete cleaned response.
+    Then try extracting the outer JSON object.
+    """
+
+    output = _clean_json_response(
+        output
+    )
+
+    if not output:
+        return None
+
+    try:
+        return json.loads(
+            output
+        )
+
+    except json.JSONDecodeError:
+        pass
+
+    extracted = _extract_json_object(
+        output
+    )
+
+    if extracted != output:
+
+        try:
+            return json.loads(
+                extracted
+            )
+
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+# ============================================================
+# NORMALISATION
+# ============================================================
 
 def _normalise_trade(trade):
     if not isinstance(trade, str):
@@ -149,6 +227,26 @@ def _safe_int(value):
     return value
 
 
+# ============================================================
+# EMAIL
+# ============================================================
+
+PLACEHOLDER_EMAIL_DOMAINS = {
+    "domain.com",
+    "example.com",
+    "example.org",
+    "example.net",
+}
+
+PLACEHOLDER_EMAIL_LOCAL_PARTS = {
+    "user",
+    "test",
+    "example",
+    "name",
+    "email",
+}
+
+
 def _normalise_email(value):
     value = _safe_string(
         value
@@ -189,6 +287,46 @@ def _normalise_email(value):
 
     return email
 
+
+def _is_valid_public_email(email):
+    """
+    Validate an email as a usable public business email.
+
+    This deliberately rejects obvious placeholder addresses
+    while allowing legitimate free-email providers such as
+    Gmail, Yahoo and Hotmail.
+    """
+
+    email = _normalise_email(
+        email
+    )
+
+    if not email:
+        return False
+
+    local_part, separator, domain = (
+        email.rpartition("@")
+    )
+
+    if (
+        not separator
+        or not local_part
+        or not domain
+    ):
+        return False
+
+    if domain in PLACEHOLDER_EMAIL_DOMAINS:
+        return False
+
+    if local_part in PLACEHOLDER_EMAIL_LOCAL_PARTS:
+        return False
+
+    return True
+
+
+# ============================================================
+# PHONE
+# ============================================================
 
 def _normalise_phone(value):
     """
@@ -241,6 +379,10 @@ def _normalise_phone(value):
     return cleaned
 
 
+# ============================================================
+# WEBSITE VALIDATION
+# ============================================================
+
 def _is_public_hostname(hostname):
     """
     Prevent website fetching from resolving to local/private
@@ -262,9 +404,6 @@ def _is_public_hostname(hostname):
     if not hostname:
         return False
 
-    # DNS hostnames have a maximum total length of 253
-    # characters and each individual label may be at most
-    # 63 characters.
     if len(hostname) > 253:
         return False
 
@@ -397,9 +536,6 @@ def _normalise_url(url):
 
     IMPORTANT:
     This function does NOT guess or construct URLs.
-
-    Malformed Gemini website values are rejected before
-    DNS resolution.
     """
 
     url = _safe_string(
@@ -501,8 +637,6 @@ def _is_valid_business_website(url):
     - documents
     - favicons
     - obvious static files
-
-    We never replace a rejected URL with a guessed URL.
     """
 
     url = _normalise_url(
@@ -583,6 +717,10 @@ def _is_valid_business_website(url):
 
     return url
 
+
+# ============================================================
+# WEBSITE FETCHING
+# ============================================================
 
 def _fetch_web_page(url):
     """
@@ -911,10 +1049,12 @@ def _verify_provider_website(provider):
         }
 
     try:
+
         verified = _verify_website_details(
             provider=provider,
             website=website
         )
+
     except Exception as exc:
 
         print(
@@ -1039,6 +1179,10 @@ def _verify_provider_websites_parallel(providers):
     return results
 
 
+# ============================================================
+# LOCATION SEARCH
+# ============================================================
+
 def _location_search_tiers(location):
     """
     Return progressively wider geographic search instructions.
@@ -1088,8 +1232,8 @@ Search the wider surrounding area around:
 
 {location}
 
-Prioritise contractors that explicitly serve the target
-location and nearby communities.
+Prioritise contractors that explicitly state they serve the
+target location and nearby communities.
 
 Do not favour a distant business merely because it has
 more reviews.
@@ -1112,21 +1256,17 @@ to the property.
     ]
 
 
-def _discover_provider_batch(
-    client,
+# ============================================================
+# GEMINI DISCOVERY
+# ============================================================
+
+def _build_discovery_prompt(
     trades_text,
     location_instruction,
     excluded_businesses,
-    batch_number
+    batch_number,
+    retry=False
 ):
-    """
-    Ask Gemini for another batch of real businesses.
-
-    A deliberately larger batch is requested so that after
-    public-email verification we have a good chance of
-    producing enough qualifying contractors.
-    """
-
     excluded_text = ""
 
     if excluded_businesses:
@@ -1144,7 +1284,19 @@ def _discover_provider_batch(
             )
         )
 
-    prompt = f"""
+    retry_instruction = ""
+
+    if retry:
+        retry_instruction = """
+IMPORTANT:
+The previous response could not be parsed as valid JSON.
+Return the response again as COMPLETE valid JSON.
+Do not truncate any strings.
+Do not include markdown fences.
+Do not include explanations before or after the JSON.
+"""
+
+    return f"""
 Find real businesses that provide these property
 maintenance services:
 
@@ -1164,6 +1316,8 @@ Return a LARGE pool of strong candidates in this batch,
 preferably around 15-20 businesses.
 
 {excluded_text}
+
+{retry_instruction}
 
 Return ONLY JSON in this format:
 
@@ -1246,6 +1400,11 @@ Rules:
 25. Do not output markdown.
 """
 
+
+def _request_gemini_provider_batch(
+    client,
+    prompt
+):
     try:
 
         response = client.interactions.create(
@@ -1411,23 +1570,15 @@ Rules:
 
         return []
 
-    try:
+    data = _parse_provider_json(
+        output
+    )
 
-        data = json.loads(
-            output
+    if data is None:
+
+        raise ValueError(
+            "Gemini returned malformed provider JSON"
         )
-
-    except json.JSONDecodeError as exc:
-
-        print(
-            "[external search] Gemini response was not valid JSON: "
-            f"{exc!r}",
-            flush=True
-        )
-
-        raise RuntimeError(
-            "Gemini returned invalid provider JSON"
-        ) from exc
 
     if not isinstance(
         data,
@@ -1448,6 +1599,74 @@ Rules:
 
     return providers
 
+
+def _discover_provider_batch(
+    client,
+    trades_text,
+    location_instruction,
+    excluded_businesses,
+    batch_number
+):
+    """
+    Ask Gemini for another batch of real businesses.
+
+    If Gemini returns malformed JSON, retry the same search
+    once with an explicit instruction to return complete JSON.
+    """
+
+    for attempt in range(
+        1,
+        MAX_GEMINI_JSON_ATTEMPTS + 1
+    ):
+
+        retry = attempt > 1
+
+        prompt = _build_discovery_prompt(
+            trades_text=trades_text,
+            location_instruction=location_instruction,
+            excluded_businesses=excluded_businesses,
+            batch_number=batch_number,
+            retry=retry
+        )
+
+        try:
+
+            providers = _request_gemini_provider_batch(
+                client=client,
+                prompt=prompt
+            )
+
+            print(
+                "[external search] Gemini JSON parsed "
+                f"successfully on attempt {attempt}",
+                flush=True
+            )
+
+            return providers
+
+        except ValueError as exc:
+
+            print(
+                "[external search] Gemini returned invalid "
+                f"provider JSON on attempt {attempt}/"
+                f"{MAX_GEMINI_JSON_ATTEMPTS}: "
+                f"{exc!r}",
+                flush=True
+            )
+
+            if attempt >= MAX_GEMINI_JSON_ATTEMPTS:
+
+                raise RuntimeError(
+                    "Gemini returned invalid provider JSON "
+                    "after retry"
+                ) from exc
+
+    return []
+
+
+# ============================================================
+# MAIN SEARCH
+# ============================================================
 
 def search_external_workers(
     maintenance_request_id,
@@ -1521,9 +1740,6 @@ def search_external_workers(
             flush=True
         )
 
-        # Two searches per geographic tier gives Gemini
-        # more opportunities to find genuinely different
-        # businesses while still keeping the search bounded.
         for batch_number in range(1, 3):
 
             if len(candidates) >= TARGET_CONTRACTORS:
@@ -1545,14 +1761,9 @@ def search_external_workers(
                 flush=True
             )
 
-            # -----------------------------------------------------
+            # -------------------------------------------------
             # PRE-FILTER PROVIDERS
-            #
-            # Do all cheap validation first.
-            # Website verification is the expensive operation,
-            # so only valid providers with a usable website
-            # reach the parallel executor.
-            # -----------------------------------------------------
+            # -------------------------------------------------
 
             prepared_providers = []
 
@@ -1618,13 +1829,9 @@ def search_external_workers(
             if not prepared_providers:
                 continue
 
-            # -----------------------------------------------------
+            # -------------------------------------------------
             # PARALLEL WEBSITE VERIFICATION
-            #
-            # Previously this happened one contractor at a time.
-            #
-            # Now up to 8 websites are checked simultaneously.
-            # -----------------------------------------------------
+            # -------------------------------------------------
 
             verification_results = (
                 _verify_provider_websites_parallel(
@@ -1632,13 +1839,9 @@ def search_external_workers(
                 )
             )
 
-            # -----------------------------------------------------
+            # -------------------------------------------------
             # PROCESS VERIFIED RESULTS
-            #
-            # This remains sequential intentionally so candidate
-            # ordering, duplicate email detection and candidate
-            # IDs stay deterministic.
-            # -----------------------------------------------------
+            # -------------------------------------------------
 
             for index, provider in enumerate(
                 prepared_providers
@@ -1709,16 +1912,17 @@ def search_external_workers(
 
                 # -------------------------------------------------
                 # PUBLIC EMAIL REQUIREMENT
-                #
-                # No email = do not include the contractor.
                 # -------------------------------------------------
 
-                if not email:
+                if not _is_valid_public_email(
+                    email
+                ):
 
                     print(
                         "[external search] rejected contractor "
-                        "without public email: "
-                        f"name={name!r}",
+                        "without valid public business email: "
+                        f"name={name!r}, "
+                        f"email={email!r}",
                         flush=True
                     )
 
@@ -1826,3 +2030,4 @@ def find_contractors_with_gemini(
         required_trades=required_trades,
         location=location
     )
+
