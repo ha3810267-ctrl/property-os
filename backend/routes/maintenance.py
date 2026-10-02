@@ -1390,7 +1390,13 @@ def search_external_workers_for_request(
         for candidate in final_candidates
         if candidate in new_candidates
     ]
-
+    print(
+    "[contractor debug] "
+    f"new={len(new_candidates)}, "
+    f"final={len(final_candidates)}, "
+    f"final_new={len(final_new_candidates)}",
+    flush=True
+)
     # --------------------------------------------------------
     # Save candidates
     # --------------------------------------------------------
