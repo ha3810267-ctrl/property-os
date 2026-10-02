@@ -379,6 +379,7 @@ def build_external_worker_email(
     return subject, html, text_body
 
 
+
 def automatically_contact_external_workers(
     maintenance_request,
     candidates,
@@ -392,6 +393,12 @@ def automatically_contact_external_workers(
 
     Only candidates passed into this function are contacted.
     """
+
+    print(
+        "[contractor email] function called: "
+        f"{len(candidates)} candidates",
+        flush=True
+    )
 
     property_location = get_property_location_for_request(
         maintenance_request,
@@ -419,6 +426,14 @@ def automatically_contact_external_workers(
 
         if not email:
 
+            print(
+                "[contractor email] skipped: "
+                f"candidate={candidate.id}, "
+                f"name={candidate.name!r}, "
+                "reason=no email",
+                flush=True
+            )
+
             skipped.append({
                 "candidate_id": candidate.id,
                 "contractor": candidate.name,
@@ -427,12 +442,26 @@ def automatically_contact_external_workers(
 
             continue
 
+        print(
+            "[contractor email] calling send_email: "
+            f"candidate={candidate.id}, "
+            f"name={candidate.name!r}, "
+            f"email={email!r}",
+            flush=True
+        )
+
         try:
 
             result = send_email(
                 to=email,
                 subject=subject,
                 html=html
+            )
+
+            print(
+                "[contractor email] send_email returned: "
+                f"{result!r}",
+                flush=True
             )
 
             resend_message_id = None
@@ -509,7 +538,17 @@ def automatically_contact_external_workers(
                 "error": str(exc)
             })
 
+    print(
+        "[contractor email] function finished: "
+        f"sent={len(sent)}, "
+        f"skipped={len(skipped)}, "
+        f"failed={len(failed)}",
+        flush=True
+    )
+
     return sent, skipped, failed
+
+
 
 
 # ============================================================
