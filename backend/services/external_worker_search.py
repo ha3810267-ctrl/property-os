@@ -14,6 +14,10 @@ from backend.models.external_worker_candidate import (
     ExternalWorkerCandidate
 )
 
+from backend.services.email import (
+    send_email
+)
+
 
 EMAIL_PATTERN = re.compile(
     r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}",
@@ -1671,7 +1675,10 @@ def _discover_provider_batch(
 def search_external_workers(
     maintenance_request_id,
     required_trades,
-    location=None
+    location=None,
+    email_subject=None,
+    email_html=None,
+    email_text_body=None
 ):
     """
     Discover exactly up to 20 qualifying external contractors.
@@ -1686,9 +1693,12 @@ def search_external_workers(
     Contractors without a publicly verified email are
     excluded.
 
-    The search continues into wider geographic areas until
-    20 qualifying contractors have been found or the
-    available search results are exhausted.
+    When email_subject and email_html are supplied,
+    qualifying contractors are emailed immediately after
+    their public email has been verified.
+
+    The candidate is then returned to maintenance.py,
+    where the candidate and outbound message are persisted.
     """
 
     if not maintenance_request_id:
@@ -1942,6 +1952,53 @@ def search_external_workers(
                     email
                 )
 
+                # -------------------------------------------------
+                # SEND EMAIL IMMEDIATELY
+                # -------------------------------------------------
+
+                email_send_result = None
+                email_send_error = None
+
+                if (
+                    email_subject
+                    and email_html
+                ):
+
+                    print(
+                        "[contractor email] sending immediately: "
+                        f"name={name!r}, "
+                        f"email={email!r}",
+                        flush=True
+                    )
+
+                    try:
+
+                        email_send_result = send_email(
+                            to=email,
+                            subject=email_subject,
+                            html=email_html
+                        )
+
+                        print(
+                            "[contractor email] send_email returned: "
+                            f"{email_send_result!r}",
+                            flush=True
+                        )
+
+                    except Exception as exc:
+
+                        email_send_error = str(
+                            exc
+                        )
+
+                        print(
+                            "[contractor email] send failed: "
+                            f"name={name!r}, "
+                            f"email={email!r}, "
+                            f"error={exc!r}",
+                            flush=True
+                        )
+
                 external_id = (
                     f"gemini-web-"
                     f"{maintenance_request_id}-"
@@ -1984,6 +2041,32 @@ def search_external_workers(
                     source_url=source_url,
                 )
 
+                # Temporary values used by maintenance.py
+                # when persisting the outbound message.
+                candidate._email_send_result = (
+                    email_send_result
+                )
+
+                candidate._email_send_error = (
+                    email_send_error
+                )
+
+                candidate._email_subject = (
+                    email_subject
+                )
+
+                candidate._email_html = (
+                    email_html
+                )
+
+                candidate._email_text_body = (
+                    email_text_body
+                )
+
+                candidate._email_recipient = (
+                    email
+                )
+
                 candidates.append(
                     candidate
                 )
@@ -1996,6 +2079,8 @@ def search_external_workers(
                     f"trade={trade!r}, "
                     f"location={location_value!r}, "
                     f"email={email!r}, "
+                    f"email_sent="
+                    f"{email_send_error is None and email_send_result is not None}, "
                     f"tier={tier_name!r}",
                     flush=True
                 )
@@ -2021,13 +2106,19 @@ def search_external_workers(
 def find_contractors_with_gemini(
     maintenance_request_id,
     required_trades,
-    location=None
+    location=None,
+    email_subject=None,
+    email_html=None,
+    email_text_body=None
 ):
     return search_external_workers(
         maintenance_request_id=(
             maintenance_request_id
         ),
         required_trades=required_trades,
-        location=location
+        location=location,
+        email_subject=email_subject,
+        email_html=email_html,
+        email_text_body=email_text_body
     )
 

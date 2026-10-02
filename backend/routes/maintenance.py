@@ -24,10 +24,6 @@ from backend.services.external_worker_ranking import (
     rank_external_workers
 )
 
-from backend.services.email import (
-    send_email
-)
-
 
 from backend.utils.audit import create_audit_log
 from backend.database import db
@@ -378,175 +374,6 @@ def build_external_worker_email(
     )
 
     return subject, html, text_body
-
-
-def automatically_contact_external_workers(
-    maintenance_request,
-    candidates,
-    organisation_id
-):
-    """
-    Automatically emails every newly discovered contractor
-    that has a public email address.
-
-    Contractors without an email are skipped.
-
-    Only candidates passed into this function are contacted.
-    """
-
-    print(
-        "[contractor email] function called: "
-        f"{len(candidates)} candidates",
-        flush=True
-    )
-
-    property_location = get_property_location_for_request(
-        maintenance_request,
-        organisation_id
-    )
-
-    subject, html, text_body = (
-        build_external_worker_email(
-            maintenance_request,
-            property_location
-        )
-    )
-
-    sent = []
-    skipped = []
-    failed = []
-
-    for candidate in candidates:
-
-        email = (
-            candidate.email.strip()
-            if isinstance(candidate.email, str)
-            else None
-        )
-
-        if not email:
-
-            print(
-                "[contractor email] skipped: "
-                f"candidate={candidate.id}, "
-                f"name={candidate.name!r}, "
-                "reason=no email",
-                flush=True
-            )
-
-            skipped.append({
-                "candidate_id": candidate.id,
-                "contractor": candidate.name,
-                "reason": "No public email address found"
-            })
-
-            continue
-
-        print(
-            "[contractor email] calling send_email: "
-            f"candidate={candidate.id}, "
-            f"name={candidate.name!r}, "
-            f"email={email!r}",
-            flush=True
-        )
-
-        try:
-
-            result = send_email(
-                to=email,
-                subject=subject,
-                html=html
-            )
-
-            print(
-                "[contractor email] send_email returned: "
-                f"{result!r}",
-                flush=True
-            )
-
-            resend_message_id = None
-
-            if isinstance(result, dict):
-
-                resend_message_id = (
-                    result.get("id")
-                    or result.get("email_id")
-                )
-
-            else:
-
-                resend_message_id = getattr(
-                    result,
-                    "id",
-                    None
-                )
-
-            message = ExternalWorkerMessage(
-                maintenance_request_id=(
-                    maintenance_request.id
-                ),
-                candidate_id=candidate.id,
-                direction="outbound",
-                resend_message_id=resend_message_id,
-                sender_email=None,
-                recipient_email=email,
-                subject=subject,
-                text_body=text_body,
-                html_body=html,
-                received_at=None
-            )
-
-            db.session.add(
-                message
-            )
-
-            db.session.commit()
-
-            sent.append({
-                "candidate_id": candidate.id,
-                "contractor": candidate.name,
-                "email": email,
-                "resend_message_id": resend_message_id
-            })
-
-            print(
-                "[contractor email] sent: "
-                f"candidate={candidate.id}, "
-                f"name={candidate.name!r}, "
-                f"email={email!r}, "
-                f"resend_id={resend_message_id!r}",
-                flush=True
-            )
-
-        except Exception as exc:
-
-            db.session.rollback()
-
-            print(
-                "[contractor email] failed: "
-                f"candidate={candidate.id}, "
-                f"name={candidate.name!r}, "
-                f"email={email!r}, "
-                f"error={exc!r}",
-                flush=True
-            )
-
-            failed.append({
-                "candidate_id": candidate.id,
-                "contractor": candidate.name,
-                "email": email,
-                "error": str(exc)
-            })
-
-    print(
-        "[contractor email] function finished: "
-        f"sent={len(sent)}, "
-        f"skipped={len(skipped)}, "
-        f"failed={len(failed)}",
-        flush=True
-    )
-
-    return sent, skipped, failed
 
 
 # ============================================================
@@ -1192,6 +1019,27 @@ def search_external_workers_for_request(
             user.organisation_id
         )
 
+    property_location = (
+        location
+        or get_property_location_for_request(
+            maintenance_request,
+            user.organisation_id
+        )
+    )
+
+    # --------------------------------------------------------
+    # Build contractor email
+    # --------------------------------------------------------
+
+    (
+        email_subject,
+        email_html,
+        email_text_body
+    ) = build_external_worker_email(
+        maintenance_request,
+        property_location
+    )
+
     # --------------------------------------------------------
     # Existing candidates
     # --------------------------------------------------------
@@ -1230,7 +1078,10 @@ def search_external_workers_for_request(
         candidates = find_contractors_with_gemini(
             maintenance_request_id=maintenance_request.id,
             required_trades=required_trades,
-            location=location
+            location=location,
+            email_subject=email_subject,
+            email_html=email_html,
+            email_text_body=email_text_body
         )
 
         print(
@@ -1385,6 +1236,148 @@ def search_external_workers_for_request(
         }, 500
 
     # --------------------------------------------------------
+    # Persist outbound email records
+    #
+    # external_worker_search.py has already sent each email
+    # immediately after validating the contractor email.
+    # The candidate now has its email-send metadata attached.
+    # --------------------------------------------------------
+
+    sent = []
+    skipped = []
+    email_failed = []
+
+    for candidate in added_candidates:
+
+        email_status = getattr(
+            candidate,
+            "_email_status",
+            None
+        )
+
+        email_result = getattr(
+            candidate,
+            "_email_send_result",
+            None
+        )
+
+        email_error = getattr(
+            candidate,
+            "_email_error",
+            None
+        )
+
+        if email_status == "sent":
+
+            resend_message_id = None
+
+            if isinstance(
+                email_result,
+                dict
+            ):
+
+                resend_message_id = (
+                    email_result.get("id")
+                    or email_result.get("email_id")
+                )
+
+            else:
+
+                resend_message_id = getattr(
+                    email_result,
+                    "id",
+                    None
+                )
+
+            message = ExternalWorkerMessage(
+                maintenance_request_id=(
+                    maintenance_request.id
+                ),
+                candidate_id=candidate.id,
+                direction="outbound",
+                resend_message_id=resend_message_id,
+                sender_email=None,
+                recipient_email=candidate.email,
+                subject=(
+                    getattr(
+                        candidate,
+                        "_email_subject",
+                        email_subject
+                    )
+                ),
+                text_body=(
+                    getattr(
+                        candidate,
+                        "_email_text_body",
+                        email_text_body
+                    )
+                ),
+                html_body=(
+                    getattr(
+                        candidate,
+                        "_email_html",
+                        email_html
+                    )
+                ),
+                received_at=None
+            )
+
+            db.session.add(
+                message
+            )
+
+            sent.append({
+                "candidate_id": candidate.id,
+                "contractor": candidate.name,
+                "email": candidate.email,
+                "resend_message_id": resend_message_id
+            })
+
+        elif email_status == "skipped":
+
+            skipped.append({
+                "candidate_id": candidate.id,
+                "contractor": candidate.name,
+                "reason": (
+                    "No public email address found"
+                )
+            })
+
+        elif email_status == "failed":
+
+            email_failed.append({
+                "candidate_id": candidate.id,
+                "contractor": candidate.name,
+                "email": candidate.email,
+                "error": email_error
+            })
+
+    try:
+
+        if sent:
+
+            create_audit_log(
+                user=user,
+                action=(
+                    "maintenance_external_worker_emails_sent"
+                ),
+                resource_type="maintenance_request",
+                resource_id=maintenance_request.id
+            )
+
+        db.session.commit()
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        print(
+            "[contractor email] "
+            "email message records could not be saved",
+            flush=True
+        )
+
+    # --------------------------------------------------------
     # Build complete ranking pool
     #
     # All persisted existing + newly discovered candidates
@@ -1477,55 +1470,6 @@ def search_external_workers_for_request(
             "contractor ranking changes could not be saved",
             flush=True
         )
-
-    # --------------------------------------------------------
-    # AUTOMATIC CONTRACTOR EMAIL
-    #
-    # Only newly discovered contractors that made the final
-    # top-20 set are contacted.
-    # --------------------------------------------------------
-
-    sent = []
-    skipped = []
-    email_failed = []
-
-    if final_new_candidates:
-
-        (
-            sent,
-            skipped,
-            email_failed
-        ) = automatically_contact_external_workers(
-            maintenance_request=maintenance_request,
-            candidates=final_new_candidates,
-            organisation_id=user.organisation_id
-        )
-
-        if sent:
-
-            try:
-
-                create_audit_log(
-                    user=user,
-                    action=(
-                        "maintenance_external_worker_emails_sent"
-                    ),
-                    resource_type="maintenance_request",
-                    resource_id=maintenance_request.id
-                )
-
-                db.session.commit()
-
-            except SQLAlchemyError:
-
-                db.session.rollback()
-
-                print(
-                    "[contractor email] "
-                    "emails were sent but email audit "
-                    "log could not be saved",
-                    flush=True
-                )
 
     # --------------------------------------------------------
     # Return discovery + ranking + email results
