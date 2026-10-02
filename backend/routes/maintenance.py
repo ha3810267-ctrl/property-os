@@ -1,3 +1,4 @@
+
 from datetime import datetime, timezone
 from html import escape
 
@@ -379,7 +380,6 @@ def build_external_worker_email(
     return subject, html, text_body
 
 
-
 def automatically_contact_external_workers(
     maintenance_request,
     candidates,
@@ -547,8 +547,6 @@ def automatically_contact_external_workers(
     )
 
     return sent, skipped, failed
-
-
 
 
 # ============================================================
@@ -1330,15 +1328,72 @@ def search_external_workers_for_request(
     )
 
     # --------------------------------------------------------
-    # Combine existing + new candidates
+    # Save ALL genuinely new candidates
     #
-    # Ranking is performed against the full pool so the final
-    # displayed/contacted set is the strongest 20 candidates.
+    # Discovery and ranking are separate concerns.
+    # Every new contractor found by Gemini is persisted.
+    # Ranking later determines the strongest top-20 set.
+    # --------------------------------------------------------
+
+    added_candidates = []
+
+    try:
+
+        for candidate in new_candidates:
+
+            db.session.add(
+                candidate
+            )
+
+            added_candidates.append(
+                candidate
+            )
+
+        db.session.flush()
+
+        create_audit_log(
+            user=user,
+            action=(
+                "maintenance_gemini_contractor_search"
+            ),
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
+
+        db.session.commit()
+
+    except IntegrityError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "External contractor candidates "
+                "could not be created"
+            )
+        }, 409
+
+    except SQLAlchemyError:
+
+        db.session.rollback()
+
+        return {
+            "error": (
+                "External contractor candidates "
+                "could not be saved"
+            )
+        }, 500
+
+    # --------------------------------------------------------
+    # Build complete ranking pool
+    #
+    # All persisted existing + newly discovered candidates
+    # are ranked together.
     # --------------------------------------------------------
 
     ranking_pool = (
         list(existing_candidates)
-        + list(new_candidates)
+        + list(added_candidates)
     )
 
     ranking_error = None
@@ -1366,7 +1421,7 @@ def search_external_workers_for_request(
                 flush=True
             )
 
-            for candidate in new_candidates:
+            for candidate in added_candidates:
 
                 candidate.match_score = None
                 candidate.match_reason = None
@@ -1379,55 +1434,26 @@ def search_external_workers_for_request(
         :TARGET_EXTERNAL_CONTRACTORS
     ]
 
-    final_candidate_ids = {
-        candidate.id
-        for candidate in final_candidates
-        if candidate.id is not None
-    }
-
     final_new_candidates = [
         candidate
         for candidate in final_candidates
-        if candidate in new_candidates
+        if candidate in added_candidates
     ]
-    print(
-    "[contractor debug] "
-    f"new={len(new_candidates)}, "
-    f"final={len(final_candidates)}, "
-    f"final_new={len(final_new_candidates)}",
-    flush=True
-)
-    # --------------------------------------------------------
-    # Save candidates
-    # --------------------------------------------------------
 
-    added_candidates = []
+    print(
+        "[contractor debug] "
+        f"new={len(new_candidates)}, "
+        f"saved={len(added_candidates)}, "
+        f"final={len(final_candidates)}, "
+        f"final_new={len(final_new_candidates)}",
+        flush=True
+    )
+
+    # --------------------------------------------------------
+    # Save ranking changes
+    # --------------------------------------------------------
 
     try:
-
-        for candidate in new_candidates:
-
-            if candidate not in final_new_candidates:
-                continue
-
-            db.session.add(
-                candidate
-            )
-
-            added_candidates.append(
-                candidate
-            )
-
-        db.session.flush()
-
-        create_audit_log(
-            user=user,
-            action=(
-                "maintenance_gemini_contractor_search"
-            ),
-            resource_type="maintenance_request",
-            resource_id=maintenance_request.id
-        )
 
         if ranking_pool:
 
@@ -1442,27 +1468,15 @@ def search_external_workers_for_request(
 
         db.session.commit()
 
-    except IntegrityError:
-
-        db.session.rollback()
-
-        return {
-            "error": (
-                "External contractor candidates "
-                "could not be created"
-            )
-        }, 409
-
     except SQLAlchemyError:
 
         db.session.rollback()
 
-        return {
-            "error": (
-                "External contractor candidates "
-                "could not be saved"
-            )
-        }, 500
+        print(
+            "[external search] "
+            "contractor ranking changes could not be saved",
+            flush=True
+        )
 
     # --------------------------------------------------------
     # AUTOMATIC CONTRACTOR EMAIL
@@ -1475,7 +1489,7 @@ def search_external_workers_for_request(
     skipped = []
     email_failed = []
 
-    if added_candidates:
+    if final_new_candidates:
 
         (
             sent,
@@ -1483,7 +1497,7 @@ def search_external_workers_for_request(
             email_failed
         ) = automatically_contact_external_workers(
             maintenance_request=maintenance_request,
-            candidates=added_candidates,
+            candidates=final_new_candidates,
             organisation_id=user.organisation_id
         )
 
@@ -2055,3 +2069,4 @@ def delete_maintenance_request(
         ),
         "id": maintenance_request_id
     }, 200
+
