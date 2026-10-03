@@ -1191,8 +1191,17 @@ def _location_search_tiers(location):
     """
     Return progressively wider geographic search instructions.
 
-    We deliberately search locally first and only broaden the
-    area when we still need more qualifying contractors.
+    The search always starts locally.
+
+    A wider tier is only reached when the previous tier did
+    not produce enough qualifying contractors.
+
+    Tier order:
+
+    1. local
+    2. nearby
+    3. surrounding
+    4. wider
     """
 
     location = _safe_string(
@@ -1212,33 +1221,43 @@ Search primarily within the exact target area:
 
 Prioritise businesses physically located in this area
 or clearly serving this exact area.
+
 Do not broaden the search unnecessarily.
+Only use businesses outside this area when necessary
+to find legitimate suitable contractors.
 """
         ),
         (
             "nearby",
             f"""
-Search around the target location:
+The exact target area did not provide enough qualifying
+contractors.
+
+Now expand only to nearby areas around:
 
 {location}
 
-Prioritise nearby towns, suburbs, districts and surrounding
-areas immediately adjacent to the target location.
+Prioritise immediately adjacent towns, suburbs, districts
+and communities.
 
 Businesses farther away should only be considered when
-there are not enough suitable businesses in the target area.
+nearby businesses are insufficient.
 """
         ),
         (
             "surrounding",
             f"""
-Search the wider surrounding area around:
+The local and nearby searches did not provide enough
+qualifying contractors.
+
+Now expand to the wider surrounding area around:
 
 {location}
 
-Prioritise contractors that explicitly state they serve the
-target location and nearby communities.
+Prioritise contractors that explicitly state they serve
+the target location or nearby communities.
 
+Keep geographic proximity important.
 Do not favour a distant business merely because it has
 more reviews.
 """
@@ -1246,15 +1265,18 @@ more reviews.
         (
             "wider",
             f"""
-Search a wider reasonable service area around:
+The local, nearby and surrounding searches did not provide
+enough qualifying contractors.
+
+Now use a wider reasonable service area around:
 
 {location}
 
-The goal is to find additional legitimate contractors
-that publicly state they serve the target location.
+Find additional legitimate contractors that publicly state
+they serve the target location.
 
 Still prioritise businesses that are geographically close
-to the property.
+to the property where possible.
 """
         ),
     ]
@@ -1681,14 +1703,18 @@ def search_external_workers(
     email_text_body=None
 ):
     """
-    Discover exactly up to 20 qualifying external contractors.
+    Discover up to TARGET_CONTRACTORS qualifying external
+    contractors.
 
-    Search strategy:
+    Geographic search strategy:
 
-    1. Exact local area
-    2. Nearby areas
-    3. Wider surrounding area
-    4. Wider service area
+    1. Search the exact local area.
+    2. If fewer than TARGET_CONTRACTORS qualify, expand nearby.
+    3. If still insufficient, expand to surrounding areas.
+    4. If still insufficient, use the wider service area.
+
+    The system NEVER moves to a wider tier once enough
+    qualifying contractors have already been found.
 
     Contractors without a publicly verified email are
     excluded.
@@ -1737,23 +1763,56 @@ def search_external_workers(
     seen_businesses = set()
     seen_emails = set()
 
-    for tier_name, location_instruction in location_tiers:
+    for tier_index, (
+        tier_name,
+        location_instruction
+    ) in enumerate(
+        location_tiers
+    ):
+
+        # -----------------------------------------------------
+        # STOP BEFORE STARTING A BROADER TIER
+        # -----------------------------------------------------
 
         if len(candidates) >= TARGET_CONTRACTORS:
+            print(
+                "[external search] target reached before "
+                f"starting tier {tier_name!r}: "
+                f"{len(candidates)}/{TARGET_CONTRACTORS}",
+                flush=True
+            )
+
             break
 
         print(
             "[external search] starting location tier: "
             f"{tier_name!r}, "
             f"current qualifying candidates="
-            f"{len(candidates)}",
+            f"{len(candidates)}/{TARGET_CONTRACTORS}",
             flush=True
         )
+
+        tier_start_count = len(
+            candidates
+        )
+
+        # -----------------------------------------------------
+        # SEARCH THE CURRENT TIER
+        # -----------------------------------------------------
 
         for batch_number in range(1, 3):
 
             if len(candidates) >= TARGET_CONTRACTORS:
                 break
+
+            print(
+                "[external search] requesting batch: "
+                f"tier={tier_name!r}, "
+                f"batch={batch_number}, "
+                f"current qualifying="
+                f"{len(candidates)}/{TARGET_CONTRACTORS}",
+                flush=True
+            )
 
             providers = _discover_provider_batch(
                 client=client,
@@ -1837,6 +1896,14 @@ def search_external_workers(
                 )
 
             if not prepared_providers:
+
+                print(
+                    "[external search] no new usable providers "
+                    f"from tier={tier_name!r}, "
+                    f"batch={batch_number}",
+                    flush=True
+                )
+
                 continue
 
             # -------------------------------------------------
@@ -1999,6 +2066,11 @@ def search_external_workers(
                             flush=True
                         )
 
+                        # Keep the existing behaviour:
+                        # a failed email does not create a
+                        # qualifying contacted candidate.
+                        continue
+
                 external_id = (
                     f"gemini-web-"
                     f"{maintenance_request_id}-"
@@ -2085,6 +2157,73 @@ def search_external_workers(
                     flush=True
                 )
 
+            # -------------------------------------------------
+            # TARGET CHECK AFTER EACH BATCH
+            # -------------------------------------------------
+
+            if len(candidates) >= TARGET_CONTRACTORS:
+
+                print(
+                    "[external search] target reached "
+                    f"inside tier={tier_name!r}, "
+                    f"batch={batch_number}: "
+                    f"{len(candidates)}/{TARGET_CONTRACTORS}",
+                    flush=True
+                )
+
+                break
+
+        # -----------------------------------------------------
+        # TIER SUMMARY
+        # -----------------------------------------------------
+
+        tier_added = (
+            len(candidates)
+            - tier_start_count
+        )
+
+        print(
+            "[external search] completed location tier: "
+            f"{tier_name!r}, "
+            f"qualifying added={tier_added}, "
+            f"total qualifying="
+            f"{len(candidates)}/{TARGET_CONTRACTORS}",
+            flush=True
+        )
+
+        # -----------------------------------------------------
+        # ONLY BROADEN IF NECESSARY
+        # -----------------------------------------------------
+
+        if len(candidates) >= TARGET_CONTRACTORS:
+
+            print(
+                "[external search] enough qualifying "
+                "contractors found. "
+                "No broader geographic search required.",
+                flush=True
+            )
+
+            break
+
+        if tier_index < len(location_tiers) - 1:
+
+            next_tier_name = location_tiers[
+                tier_index + 1
+            ][0]
+
+            print(
+                "[external search] insufficient qualifying "
+                f"contractors after tier={tier_name!r}: "
+                f"{len(candidates)}/{TARGET_CONTRACTORS}. "
+                f"Expanding to {next_tier_name!r}.",
+                flush=True
+            )
+
+    # ========================================================
+    # FINAL RESULT
+    # ========================================================
+
     print(
         "[external search] final qualifying candidates: "
         f"{len(candidates)}/{TARGET_CONTRACTORS}",
@@ -2094,9 +2233,9 @@ def search_external_workers(
     if len(candidates) < TARGET_CONTRACTORS:
 
         print(
-            "[external search] WARNING: fewer than 20 "
-            "qualifying contractors were found after "
-            "all geographic search tiers.",
+            "[external search] WARNING: fewer than "
+            f"{TARGET_CONTRACTORS} qualifying contractors "
+            "were found after all geographic search tiers.",
             flush=True
         )
 
@@ -2121,4 +2260,3 @@ def find_contractors_with_gemini(
         email_html=email_html,
         email_text_body=email_text_body
     )
-
