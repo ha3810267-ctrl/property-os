@@ -2,6 +2,7 @@
 import { NavLink, Outlet, Navigate } from "react-router-dom"
 import {
   LayoutDashboard,
+  Building2,
   Wrench,
   UserRound,
   LogOut,
@@ -43,6 +44,11 @@ export default function AppLayout() {
             <span>Dashboard</span>
           </NavLink>
 
+          <NavLink to="/properties">
+            <Building2 size={18} />
+            <span>Properties</span>
+          </NavLink>
+
           <NavLink to="/maintenance">
             <Wrench size={18} />
             <span>Maintenance</span>
@@ -76,3 +82,7 @@ export default function AppLayout() {
     </div>
   )
 }
+
+
+
+
