@@ -1,8 +1,7 @@
+
 import { NavLink, Outlet, Navigate } from "react-router-dom"
 import {
   LayoutDashboard,
-  Building2,
-  Users,
   Wrench,
   UserRound,
   LogOut,
@@ -15,20 +14,11 @@ export default function AppLayout() {
     return <Navigate to="/login" replace />
   }
 
-  let user = null
-
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]))
-    user = payload
+    JSON.parse(atob(token.split(".")[1]))
   } catch {
     localStorage.removeItem("access_token")
     return <Navigate to="/login" replace />
-  }
-
-  const isTenant = user?.role === "tenant"
-
-  if (isTenant) {
-    return <Navigate to="/tenant-dashboard" replace />
   }
 
   function handleLogout() {
@@ -46,32 +36,12 @@ export default function AppLayout() {
           <span>PropertyOS</span>
         </div>
 
-
         <nav className="sidebar-nav">
 
           <NavLink to="/" end>
             <LayoutDashboard size={18} />
             <span>Dashboard</span>
           </NavLink>
-
-
-          <NavLink to="/properties">
-            <Building2 size={18} />
-            <span>Properties</span>
-          </NavLink>
-
-
-          <NavLink to="/tenants">
-            <Users size={18} />
-            <span>Tenants</span>
-          </NavLink>
-
-
-          <NavLink to="/workers">
-            <UserRound size={18} />
-            <span>Workers</span>
-          </NavLink>
-
 
           <NavLink to="/maintenance">
             <Wrench size={18} />
@@ -80,14 +50,12 @@ export default function AppLayout() {
 
         </nav>
 
-
         <div className="sidebar-bottom">
 
           <NavLink to="/account">
             <UserRound size={18} />
             <span>Account</span>
           </NavLink>
-
 
           <button
             className="logout-button"
@@ -100,7 +68,6 @@ export default function AppLayout() {
         </div>
 
       </aside>
-
 
       <main className="main-content">
         <Outlet />
