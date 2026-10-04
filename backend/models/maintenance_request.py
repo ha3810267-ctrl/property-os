@@ -1,3 +1,4 @@
+
 from backend.database import db
 from datetime import datetime, timezone
 
@@ -14,16 +15,15 @@ class MaintenanceRequest(db.Model):
         nullable=False
     )
 
-    tenant_id = db.Column(
+    user_id = db.Column(
         db.Integer,
-        db.ForeignKey("tenant.id"),
+        db.ForeignKey("user.id"),
         nullable=False
     )
 
-    assigned_to = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id"),
-        nullable=True
+    location = db.Column(
+        db.String(500),
+        nullable=False
     )
 
     status = db.Column(
