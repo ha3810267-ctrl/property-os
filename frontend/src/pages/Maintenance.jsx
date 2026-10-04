@@ -4,7 +4,6 @@ import {
   Plus,
   Search,
   X,
-  UserRound,
   Sparkles,
   Trash2,
   ExternalLink,
@@ -34,9 +33,7 @@ const priorities = [
 
 export default function Maintenance() {
   const [requests, setRequests] = useState([])
-  const [tenants, setTenants] = useState([])
   const [properties, setProperties] = useState([])
-  const [workers, setWorkers] = useState([])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -44,12 +41,9 @@ export default function Maintenance() {
 
   const [showModal, setShowModal] = useState(false)
   const [description, setDescription] = useState("")
-  const [tenantId, setTenantId] = useState("")
+  const [propertyId, setPropertyId] = useState("")
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState("")
-
-  const [assigningId, setAssigningId] = useState(null)
-  const [removingAssignment, setRemovingAssignment] = useState(null)
 
   const [searchingExternalWorker, setSearchingExternalWorker] =
     useState(null)
@@ -64,17 +58,11 @@ export default function Maintenance() {
       setLoading(true)
       setError("")
 
-      const [
-        maintenanceData,
-        tenantsData,
-        propertiesData,
-        usersData,
-      ] = await Promise.all([
-        apiRequest("/maintenance-requests"),
-        apiRequest("/tenants"),
-        apiRequest("/properties"),
-        apiRequest("/users"),
-      ])
+      const [maintenanceData, propertiesData] =
+        await Promise.all([
+          apiRequest("/maintenance-requests"),
+          apiRequest("/properties"),
+        ])
 
       setRequests(
         Array.isArray(maintenanceData)
@@ -82,25 +70,9 @@ export default function Maintenance() {
           : []
       )
 
-      setTenants(
-        Array.isArray(tenantsData)
-          ? tenantsData
-          : []
-      )
-
       setProperties(
         Array.isArray(propertiesData)
           ? propertiesData
-          : []
-      )
-
-      setWorkers(
-        Array.isArray(usersData)
-          ? usersData.filter(
-              (user) =>
-                user.role === "worker" &&
-                user.is_active === true
-            )
           : []
       )
     } catch (error) {
@@ -138,15 +110,6 @@ export default function Maintenance() {
     return expandedReplies[key] === true
   }
 
-  function getContractorReplies(worker) {
-    return Array.isArray(worker?.replies)
-      ? worker.replies.filter(
-          (reply) =>
-            reply.direction === "inbound"
-        )
-      : []
-  }
-
   function formatReplyDate(date) {
     if (!date) return ""
 
@@ -171,9 +134,15 @@ export default function Maintenance() {
     return "No reply content was provided."
   }
 
+  function getProperty(propertyId) {
+    return properties.find(
+      (property) => property.id === propertyId
+    )
+  }
+
   function openModal() {
     setDescription("")
-    setTenantId("")
+    setPropertyId("")
     setFormError("")
     setShowModal(true)
   }
@@ -183,13 +152,20 @@ export default function Maintenance() {
 
     setShowModal(false)
     setDescription("")
-    setTenantId("")
+    setPropertyId("")
     setFormError("")
   }
 
   async function handleSubmit(event) {
     event.preventDefault()
     setFormError("")
+
+    if (!propertyId) {
+      setFormError(
+        "Please select a property"
+      )
+      return
+    }
 
     if (!description.trim()) {
       setFormError(
@@ -198,9 +174,13 @@ export default function Maintenance() {
       return
     }
 
-    if (!tenantId) {
+    const property = getProperty(
+      Number(propertyId)
+    )
+
+    if (!property) {
       setFormError(
-        "Please select a tenant"
+        "Selected property could not be found"
       )
       return
     }
@@ -214,7 +194,7 @@ export default function Maintenance() {
           method: "POST",
           body: JSON.stringify({
             description: description.trim(),
-            tenant_id: Number(tenantId),
+            property_id: Number(propertyId),
           }),
         }
       )
@@ -226,7 +206,7 @@ export default function Maintenance() {
 
       setShowModal(false)
       setDescription("")
-      setTenantId("")
+      setPropertyId("")
       setFormError("")
     } catch (error) {
       console.error(error)
@@ -312,89 +292,6 @@ export default function Maintenance() {
     }
   }
 
-  async function assignWorker(
-    requestId,
-    userId
-  ) {
-    if (!userId) return
-
-    const numericUserId = Number(userId)
-
-    try {
-      setAssigningId(requestId)
-      setError("")
-
-      const updated = await apiRequest(
-        `/maintenance-requests/${requestId}/assign`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            user_id: numericUserId,
-          }),
-        }
-      )
-
-      setRequests((current) =>
-        current.map((request) =>
-          request.id === requestId
-            ? updated
-            : request
-        )
-      )
-    } catch (error) {
-      console.error(error)
-
-      setError(
-        error.message ||
-          "Could not assign worker"
-      )
-    } finally {
-      setAssigningId(null)
-    }
-  }
-
-  async function removeAssignment(
-    requestId,
-    userId
-  ) {
-    const confirmed = window.confirm(
-      "Remove this worker from the maintenance request?"
-    )
-
-    if (!confirmed) return
-
-    const key = `${requestId}-${userId}`
-
-    try {
-      setRemovingAssignment(key)
-      setError("")
-
-      const updated = await apiRequest(
-        `/maintenance-requests/${requestId}/assign/${userId}`,
-        {
-          method: "DELETE",
-        }
-      )
-
-      setRequests((current) =>
-        current.map((request) =>
-          request.id === requestId
-            ? updated
-            : request
-        )
-      )
-    } catch (error) {
-      console.error(error)
-
-      setError(
-        error.message ||
-          "Could not remove worker assignment"
-      )
-    } finally {
-      setRemovingAssignment(null)
-    }
-  }
-
   async function searchExternalWorkers(
     requestId
   ) {
@@ -473,59 +370,12 @@ export default function Maintenance() {
     }
   }
 
-  function getTenant(tenantId) {
-    return tenants.find(
-      (tenant) => tenant.id === tenantId
-    )
-  }
-
-  function getProperty(tenantId) {
-    const tenant = getTenant(tenantId)
-
-    if (!tenant) return null
-
-    return properties.find(
-      (property) =>
-        property.id === tenant.property_id
-    )
-  }
-
-  function getWorker(userId) {
-    return workers.find(
-      (worker) => worker.id === userId
-    )
-  }
-
-  function getAssignments(request) {
-    return Array.isArray(
-      request.assignments
-    )
-      ? request.assignments
-      : []
-  }
-
   function getExternalWorkers(request) {
     return Array.isArray(
       request.external_workers
     )
       ? request.external_workers
       : []
-  }
-
-  function getWorkerName(assignment) {
-    if (assignment.worker_name) {
-      return assignment.worker_name
-    }
-
-    const worker = getWorker(
-      assignment.user_id
-    )
-
-    if (worker?.name) {
-      return worker.name
-    }
-
-    return `Worker #${assignment.user_id}`
   }
 
   function formatStatus(status) {
@@ -558,23 +408,9 @@ export default function Maintenance() {
         return false
       }
 
-      const tenant = getTenant(
-        request.tenant_id
-      )
-
       const property = getProperty(
-        request.tenant_id
+        request.property_id
       )
-
-      const assignments =
-        getAssignments(request)
-
-      const assignedWorkerNames =
-        assignments
-          .map((assignment) =>
-            getWorkerName(assignment)
-          )
-          .join(" ")
 
       const externalWorkers =
         getExternalWorkers(request)
@@ -601,14 +437,11 @@ export default function Maintenance() {
         request.category
           ?.toLowerCase()
           .includes(term) ||
-        tenant?.name
-          ?.toLowerCase()
-          .includes(term) ||
         property?.name
           ?.toLowerCase()
           .includes(term) ||
-        assignedWorkerNames
-          .toLowerCase()
+        property?.address
+          ?.toLowerCase()
           .includes(term) ||
         externalWorkerNames
           .toLowerCase()
@@ -644,7 +477,7 @@ export default function Maintenance() {
             className="primary-button"
             onClick={openModal}
             disabled={
-              tenants.length === 0
+              properties.length === 0
             }
           >
             <Plus size={17} />
@@ -719,12 +552,12 @@ export default function Maintenance() {
               </h3>
 
               <p>
-                {tenants.length === 0
-                  ? "Add a tenant before creating a maintenance request."
+                {properties.length === 0
+                  ? "Add a property before creating a maintenance request."
                   : "Create a maintenance request to start tracking work."}
               </p>
 
-              {tenants.length > 0 && (
+              {properties.length > 0 && (
                 <button
                   className="primary-button"
                   onClick={openModal}
@@ -743,35 +576,13 @@ export default function Maintenance() {
           <div className="maintenance-list">
             {filteredRequests.map(
               (request) => {
-                const tenant =
-                  getTenant(
-                    request.tenant_id
-                  )
-
                 const property =
                   getProperty(
-                    request.tenant_id
+                    request.property_id
                   )
-
-                const assignments =
-                  getAssignments(request)
 
                 const externalWorkers =
                   getExternalWorkers(request)
-
-                const assignedWorkerIds =
-                  assignments.map(
-                    (assignment) =>
-                      assignment.user_id
-                  )
-
-                const availableWorkers =
-                  workers.filter(
-                    (worker) =>
-                      !assignedWorkerIds.includes(
-                        worker.id
-                      )
-                  )
 
                 const selectedExternalWorker =
                   externalWorkers.find(
@@ -816,13 +627,14 @@ export default function Maintenance() {
 
                         <div className="maintenance-meta">
                           <span>
-                            {tenant?.name ||
-                              "Unknown tenant"}
+                            {property?.name ||
+                              "Unknown property"}
                           </span>
 
                           <span>
-                            {property?.name ||
-                              "Unknown property"}
+                            {request.location ||
+                              property?.address ||
+                              "Location unavailable"}
                           </span>
 
                           <span>
@@ -830,160 +642,6 @@ export default function Maintenance() {
                               request.created_at
                             ).toLocaleDateString()}
                           </span>
-                        </div>
-
-                        <div className="assignment-section">
-                          <div className="assignment-section-header">
-                            <div>
-                              <div className="section-label">
-                                Internal assignment
-                              </div>
-
-                              <p>
-                                Workers currently assigned
-                                to this request
-                              </p>
-                            </div>
-
-                            <div className="assignment-count">
-                              <UserRound
-                                size={14}
-                              />
-
-                              {assignments.length}{" "}
-                              {assignments.length === 1
-                                ? "worker"
-                                : "workers"}
-                            </div>
-                          </div>
-
-                          <div className="assignment-row">
-                            <div className="assignment-info">
-                              {assignments.length ===
-                              0 ? (
-                                <span className="assignment-empty">
-                                  Unassigned
-                                </span>
-                              ) : (
-                                <div className="assignment-list">
-                                  {assignments.map(
-                                    (
-                                      assignment
-                                    ) => {
-                                      const assignmentKey =
-                                        `${request.id}-${assignment.user_id}`
-
-                                      return (
-                                        <div
-                                          className="assignment-item"
-                                          key={
-                                            assignmentKey
-                                          }
-                                        >
-                                          <div className="assignment-worker">
-                                            <strong>
-                                              {getWorkerName(
-                                                assignment
-                                              )}
-                                            </strong>
-
-                                            <div className="assignment-type">
-                                              {assignment.assignment_method ===
-                                              "ai" ? (
-                                                <>
-                                                  <Sparkles
-                                                    size={
-                                                      13
-                                                    }
-                                                  />
-                                                  AI assigned
-                                                  {assignment.score !=
-                                                    null &&
-                                                    ` · ${Math.round(
-                                                      assignment.score *
-                                                        100
-                                                    )}% match`}
-                                                </>
-                                              ) : (
-                                                <>
-                                                  Manual assignment
-                                                </>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <button
-                                            type="button"
-                                            className="property-action delete"
-                                            disabled={
-                                              removingAssignment ===
-                                              assignmentKey
-                                            }
-                                            onClick={() =>
-                                              removeAssignment(
-                                                request.id,
-                                                assignment.user_id
-                                              )
-                                            }
-                                            title="Remove worker"
-                                          >
-                                            <X
-                                              size={
-                                                14
-                                              }
-                                            />
-                                          </button>
-                                        </div>
-                                      )
-                                    }
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            <select
-                              id={`worker-${request.id}`}
-                              name={`worker-${request.id}`}
-                              value=""
-                              disabled={
-                                assigningId ===
-                                  request.id ||
-                                availableWorkers.length ===
-                                  0
-                              }
-                              onChange={(event) =>
-                                assignWorker(
-                                  request.id,
-                                  event.target
-                                    .value
-                                )
-                              }
-                            >
-                              <option value="">
-                                {availableWorkers.length ===
-                                0
-                                  ? "All workers assigned"
-                                  : "Add worker"}
-                              </option>
-
-                              {availableWorkers.map(
-                                (worker) => (
-                                  <option
-                                    key={
-                                      worker.id
-                                    }
-                                    value={
-                                      worker.id
-                                    }
-                                  >
-                                    {
-                                      worker.name
-                                    }
-                                  </option>
-                                )
-                              )}
-                            </select>
-                          </div>
                         </div>
 
                         {!selectedExternalWorker && (
@@ -995,9 +653,8 @@ export default function Maintenance() {
 
                               <p>
                                 Search for suitable
-                                contractors without
-                                removing your current
-                                internal assignment.
+                                contractors for this
+                                maintenance request.
                               </p>
                             </div>
 
@@ -1611,18 +1268,10 @@ export default function Maintenance() {
           <div className="maintenance-list">
             {completedRequests.map(
               (request) => {
-                const tenant =
-                  getTenant(
-                    request.tenant_id
-                  )
-
                 const property =
                   getProperty(
-                    request.tenant_id
+                    request.property_id
                   )
-
-                const assignments =
-                  getAssignments(request)
 
                 return (
                   <div
@@ -1654,31 +1303,20 @@ export default function Maintenance() {
 
                         <div className="maintenance-meta">
                           <span>
-                            {tenant?.name ||
-                              "Unknown tenant"}
-                          </span>
-
-                          <span>
                             {property?.name ||
                               "Unknown property"}
                           </span>
 
                           <span>
-                            {assignments.length >
-                            0
-                              ? assignments
-                                  .map(
-                                    (
-                                      assignment
-                                    ) =>
-                                      getWorkerName(
-                                        assignment
-                                      )
-                                  )
-                                  .join(
-                                    ", "
-                                  )
-                              : "Completed"}
+                            {request.location ||
+                              property?.address ||
+                              "Location unavailable"}
+                          </span>
+
+                          <span>
+                            {new Date(
+                              request.created_at
+                            ).toLocaleDateString()}
                           </span>
                         </div>
                       </div>
@@ -1741,44 +1379,35 @@ export default function Maintenance() {
 
             <form onSubmit={handleSubmit}>
               <label>
-                Tenant
+                Property
 
                 <select
-                  id="maintenance-tenant"
-                  name="maintenance-tenant"
-                  value={tenantId}
+                  id="maintenance-property"
+                  name="maintenance-property"
+                  value={propertyId}
                   onChange={(event) =>
-                    setTenantId(
+                    setPropertyId(
                       event.target.value
                     )
                   }
                   disabled={saving}
                 >
                   <option value="">
-                    Select a tenant
+                    Select a property
                   </option>
 
-                  {tenants.map(
-                    (tenant) => {
-                      const property =
-                        getProperty(
-                          tenant.id
-                        )
-
-                      return (
-                        <option
-                          key={tenant.id}
-                          value={
-                            tenant.id
-                          }
-                        >
-                          {tenant.name}
-                          {property
-                            ? ` — ${property.name}`
-                            : ""}
-                        </option>
-                      )
-                    }
+                  {properties.map(
+                    (property) => (
+                      <option
+                        key={property.id}
+                        value={property.id}
+                      >
+                        {property.name}
+                        {property.address
+                          ? ` — ${property.address}`
+                          : ""}
+                      </option>
+                    )
                   )}
                 </select>
               </label>

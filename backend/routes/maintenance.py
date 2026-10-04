@@ -28,6 +28,10 @@ from backend.models.maintenance_request import (
     MaintenanceRequest
 )
 
+from backend.models.property import (
+    Property
+)
+
 from backend.models.external_worker_candidate import (
     ExternalWorkerCandidate
 )
@@ -35,8 +39,6 @@ from backend.models.external_worker_candidate import (
 from backend.models.external_worker_message import (
     ExternalWorkerMessage
 )
-
-from backend.models.user import User
 
 
 maintenance_bp = Blueprint(
@@ -75,6 +77,19 @@ def get_maintenance_request_for_user(
         .where(
             MaintenanceRequest.id == maintenance_request_id,
             MaintenanceRequest.user_id == user_id
+        )
+    ).scalar_one_or_none()
+
+
+def get_property_for_user(
+    property_id,
+    user
+):
+    return db.session.execute(
+        select(Property)
+        .where(
+            Property.id == property_id,
+            Property.organisation_id == user.organisation_id
         )
     ).scalar_one_or_none()
 
@@ -149,6 +164,10 @@ def maintenance_request_response(
         "description": maintenance_request.description,
 
         "user_id": maintenance_request.user_id,
+
+        "property_id": maintenance_request.property_id,
+
+        "property_address": maintenance_request.location,
 
         "location": maintenance_request.location,
 
@@ -313,7 +332,7 @@ def create_maintenance_request():
         }, 400
 
     description = data.get("description")
-    location = data.get("location")
+    property_id = data.get("property_id")
 
     if (
         not isinstance(description, str)
@@ -325,18 +344,23 @@ def create_maintenance_request():
             )
         }, 400
 
-    if (
-        not isinstance(location, str)
-        or not location.strip()
-    ):
+    if property_id is None:
         return {
             "error": (
-                "Location is required"
+                "Property is required"
+            )
+        }, 400
+
+    try:
+        property_id = int(property_id)
+    except (TypeError, ValueError):
+        return {
+            "error": (
+                "Property ID must be a valid integer"
             )
         }, 400
 
     description = description.strip()
-    location = location.strip()
 
     user = get_current_user()
 
@@ -344,6 +368,29 @@ def create_maintenance_request():
         return {
             "error": "User not found"
         }, 404
+
+    property_obj = get_property_for_user(
+        property_id,
+        user
+    )
+
+    if not property_obj:
+        return {
+            "error": (
+                "Property not found or does not belong "
+                "to your organisation"
+            )
+        }, 404
+
+    location = property_obj.address.strip()
+
+    if not location:
+        return {
+            "error": (
+                "The selected property does not have "
+                "a valid address"
+            )
+        }, 422
 
     try:
 
@@ -360,6 +407,7 @@ def create_maintenance_request():
     maintenance_request = MaintenanceRequest(
         description=description,
         user_id=user.id,
+        property_id=property_obj.id,
         location=location,
         priority=ai_result["priority"],
         category=ai_result["category"]
@@ -486,6 +534,7 @@ def get_maintenance_request(
 
 # ============================================================
 # GEMINI CONTRACTOR DISCOVERY
+# + PROPERTY LOCATION
 # + LOCATION-AWARE RANKING
 # + AUTOMATIC EMAIL
 # ============================================================
@@ -520,41 +569,30 @@ def search_external_workers_for_request(
             )
         }, 404
 
-    data = request.get_json(
-        silent=True
-    )
+    property_obj = db.session.execute(
+        select(Property)
+        .where(
+            Property.id == maintenance_request.property_id,
+            Property.organisation_id == user.organisation_id
+        )
+    ).scalar_one_or_none()
 
-    if data is None:
-        data = {}
-
-    if not isinstance(data, dict):
+    if not property_obj:
         return {
             "error": (
-                "Request body must be a valid JSON object"
+                "The property attached to this "
+                "maintenance request could not be found"
             )
-        }, 400
+        }, 404
 
-    location = data.get("location")
-
-    if location is not None:
-
-        if not isinstance(location, str):
-            return {
-                "error": "Location must be a string"
-            }, 400
-
-        location = location.strip()
-
-        if not location:
-            location = None
-
-    if not location:
-        location = maintenance_request.location
+    location = property_obj.address.strip()
 
     if not location:
         return {
-            "error": "Location is required"
-        }, 400
+            "error": (
+                "The property does not have a valid address"
+            )
+        }, 422
 
     # --------------------------------------------------------
     # Determine required trades
@@ -791,9 +829,6 @@ def search_external_workers_for_request(
 
     # --------------------------------------------------------
     # Persist outbound email records
-    #
-    # external_worker_search.py has already sent each email
-    # immediately after validating the contractor email.
     # --------------------------------------------------------
 
     sent = []
@@ -1241,8 +1276,7 @@ def update_maintenance_request(
     allowed_fields = {
         "status",
         "priority",
-        "category",
-        "location"
+        "category"
     }
 
     unexpected_fields = (
@@ -1267,7 +1301,6 @@ def update_maintenance_request(
     status = data.get("status")
     priority = data.get("priority")
     category = data.get("category")
-    location = data.get("location")
 
     if status is not None:
 
@@ -1330,32 +1363,6 @@ def update_maintenance_request(
             }, 400
 
         maintenance_request.category = category
-
-    if location is not None:
-
-        if not isinstance(location, str):
-            return {
-                "error": "Location must be a string"
-            }, 400
-
-        location = location.strip()
-
-        if not location:
-            return {
-                "error": (
-                    "Location cannot be empty"
-                )
-            }, 400
-
-        if len(location) > 500:
-            return {
-                "error": (
-                    "Location must be 500 characters "
-                    "or fewer"
-                )
-            }, 400
-
-        maintenance_request.location = location
 
     try:
 

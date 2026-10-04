@@ -1,4 +1,3 @@
-
 from backend.database import db
 from datetime import datetime, timezone
 
@@ -18,6 +17,12 @@ class MaintenanceRequest(db.Model):
     user_id = db.Column(
         db.Integer,
         db.ForeignKey("user.id"),
+        nullable=False
+    )
+
+    property_id = db.Column(
+        db.Integer,
+        db.ForeignKey("property.id"),
         nullable=False
     )
 
