@@ -5,7 +5,6 @@ from sqlalchemy import func, select
 from backend.database import db
 from backend.auth import get_current_user
 from backend.models.property import Property
-from backend.models.tenant import Tenant
 from backend.models.maintenance_request import MaintenanceRequest
 
 
@@ -28,23 +27,11 @@ def get_dashboard_stats():
         )
     ) or 0
 
-    tenant_count = db.session.scalar(
-        select(func.count(Tenant.id))
-        .join(Property, Tenant.property_id == Property.id)
-        .where(
-            Property.organisation_id == organisation_id
-        )
-    ) or 0
-
     open_maintenance_count = db.session.scalar(
         select(func.count(MaintenanceRequest.id))
         .join(
-            Tenant,
-            MaintenanceRequest.tenant_id == Tenant.id
-        )
-        .join(
             Property,
-            Tenant.property_id == Property.id
+            MaintenanceRequest.property_id == Property.id
         )
         .where(
             Property.organisation_id == organisation_id,
@@ -55,12 +42,8 @@ def get_dashboard_stats():
     urgent_issue_count = db.session.scalar(
         select(func.count(MaintenanceRequest.id))
         .join(
-            Tenant,
-            MaintenanceRequest.tenant_id == Tenant.id
-        )
-        .join(
             Property,
-            Tenant.property_id == Property.id
+            MaintenanceRequest.property_id == Property.id
         )
         .where(
             Property.organisation_id == organisation_id,
@@ -70,7 +53,6 @@ def get_dashboard_stats():
 
     return {
         "properties": property_count,
-        "tenants": tenant_count,
         "open_maintenance": open_maintenance_count,
         "urgent_issues": urgent_issue_count,
     }, 200

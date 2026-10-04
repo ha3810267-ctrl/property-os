@@ -1,11 +1,10 @@
-
 import {
   Building2,
-  Users,
   Wrench,
   AlertTriangle,
   ArrowUpRight,
   Plus,
+  Mail,
 } from "lucide-react"
 
 import { useEffect, useState } from "react"
@@ -17,6 +16,7 @@ export default function Dashboard() {
 
   const [stats, setStats] = useState(null)
   const [recentRequests, setRecentRequests] = useState([])
+  const [recentReplies, setRecentReplies] = useState([])
   const [maintenanceLoading, setMaintenanceLoading] =
     useState(true)
 
@@ -56,6 +56,66 @@ export default function Dashboard() {
 
         setRecentRequests(
           sortedRequests.slice(0, 6)
+        )
+
+        const replies = []
+
+        requests.forEach((request) => {
+          const externalWorkers =
+            Array.isArray(request.external_workers)
+              ? request.external_workers
+              : []
+
+          externalWorkers.forEach((worker) => {
+            const workerReplies =
+              Array.isArray(worker.replies)
+                ? worker.replies
+                : []
+
+            workerReplies.forEach((reply) => {
+              if (
+                reply.direction !== "inbound"
+              ) {
+                return
+              }
+
+              replies.push({
+                ...reply,
+                maintenance_request_id:
+                  request.id,
+                maintenance_description:
+                  request.description,
+                maintenance_category:
+                  request.category,
+                property_address:
+                  request.property_address ||
+                  request.location,
+                contractor_name:
+                  worker.name ||
+                  worker.business_name ||
+                  worker.company_name ||
+                  "Contractor",
+              })
+            })
+          })
+        })
+
+        replies.sort(
+          (a, b) =>
+            new Date(
+              b.received_at ||
+                b.created_at ||
+                b.date
+            ) -
+            new Date(
+              a.received_at ||
+                a.created_at ||
+                a.date
+            )
+        )
+
+        setRecentReplies(
+          replies.slice(0, 5)
         )
       } catch (error) {
         console.error(
@@ -103,6 +163,37 @@ export default function Dashboard() {
     )
   }
 
+  function formatReplyDate(reply) {
+    return formatDate(
+      reply.received_at ||
+        reply.created_at ||
+        reply.date
+    )
+  }
+
+  function getReplyPreview(reply) {
+    const text =
+      reply.text_body ||
+      reply.text ||
+      reply.body ||
+      reply.html_body ||
+      reply.content ||
+      ""
+
+    const cleaned = String(text)
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    if (!cleaned) {
+      return "Contractor sent a reply."
+    }
+
+    return cleaned.length > 180
+      ? `${cleaned.slice(0, 180)}...`
+      : cleaned
+  }
+
   function createMaintenanceRequest() {
     navigate("/maintenance")
   }
@@ -111,12 +202,14 @@ export default function Dashboard() {
     navigate("/maintenance")
   }
 
+  function viewMaintenanceRequest() {
+    navigate("/maintenance")
+  }
+
   return (
     <div className="dashboard-page">
 
-      {/* ==================================================
-          HEADER
-      ================================================== */}
+      {/* HEADER */}
 
       <div className="page-header">
 
@@ -130,7 +223,8 @@ export default function Dashboard() {
           </h1>
 
           <p className="page-subtitle">
-            Here’s what’s happening across your properties
+            Keep track of your properties, maintenance
+            requests and contractor responses.
           </p>
         </div>
 
@@ -146,9 +240,7 @@ export default function Dashboard() {
 
       </div>
 
-      {/* ==================================================
-          STATS
-      ================================================== */}
+      {/* STATS */}
 
       <div className="stats-grid">
 
@@ -168,26 +260,6 @@ export default function Dashboard() {
 
           <span>
             Total properties
-          </span>
-
-        </div>
-
-        <div className="stat-card">
-
-          <div className="stat-card-top">
-            <p>
-              Tenants
-            </p>
-
-            <Users size={18} />
-          </div>
-
-          <h2>
-            {stats?.tenants ?? "—"}
-          </h2>
-
-          <span>
-            Active tenants
           </span>
 
         </div>
@@ -232,11 +304,197 @@ export default function Dashboard() {
 
         </div>
 
+        <div className="stat-card">
+
+          <div className="stat-card-top">
+            <p>
+              Contractor replies
+            </p>
+
+            <Mail size={18} />
+          </div>
+
+          <h2>
+            {recentReplies.length}
+          </h2>
+
+          <span>
+            Recent responses received
+          </span>
+
+        </div>
+
       </div>
 
-      {/* ==================================================
-          RECENT MAINTENANCE
-      ================================================== */}
+      {/* RECENT CONTRACTOR REPLIES */}
+
+      <section className="dashboard-card">
+
+        <div className="card-header">
+
+          <div>
+            <p className="eyebrow">
+              Contractor communication
+            </p>
+
+            <h2>
+              Recent replies
+            </h2>
+
+            <p className="card-subtitle">
+              The latest responses from contractors
+              contacted about your maintenance requests.
+            </p>
+          </div>
+
+          <button
+            className="text-button"
+            onClick={
+              viewAllMaintenance
+            }
+          >
+            View maintenance
+            <ArrowUpRight size={14} />
+          </button>
+
+        </div>
+
+        {maintenanceLoading ? (
+
+          <div className="empty-state">
+
+            <div className="empty-icon">
+              <Mail size={20} />
+            </div>
+
+            <h3>
+              Loading replies...
+            </h3>
+
+            <p>
+              Checking for recent contractor responses.
+            </p>
+
+          </div>
+
+        ) : recentReplies.length === 0 ? (
+
+          <div className="empty-state">
+
+            <div className="empty-icon">
+              <Mail size={20} />
+            </div>
+
+            <h3>
+              No contractor replies yet
+            </h3>
+
+            <p>
+              Contractor responses will appear here
+              when they reply to your maintenance requests.
+            </p>
+
+          </div>
+
+        ) : (
+
+          <div className="dashboard-maintenance-list">
+
+            {recentReplies.map(
+              (reply, index) => {
+
+                const subject =
+                  reply.subject ||
+                  "Contractor reply"
+
+                return (
+                  <div
+                    className="dashboard-maintenance-item"
+                    key={
+                      reply.id ||
+                      `${reply.maintenance_request_id}-${index}`
+                    }
+                    onClick={
+                      viewMaintenanceRequest
+                    }
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key ===
+                          "Enter" ||
+                        event.key ===
+                          " "
+                      ) {
+                        viewMaintenanceRequest()
+                      }
+                    }}
+                  >
+
+                    <div className="dashboard-maintenance-icon">
+                      <Mail size={17} />
+                    </div>
+
+                    <div className="dashboard-maintenance-content">
+
+                      <div className="dashboard-maintenance-top">
+
+                        <strong>
+                          {reply.contractor_name}
+                        </strong>
+
+                        <span>
+                          {formatReplyDate(
+                            reply
+                          )}
+                        </span>
+
+                      </div>
+
+                      <p>
+                        {subject}
+                      </p>
+
+                      <p>
+                        {getReplyPreview(
+                          reply
+                        )}
+                      </p>
+
+                      <div className="dashboard-maintenance-meta">
+
+                        <span>
+                          {reply.property_address ||
+                            "Property"}
+                        </span>
+
+                        <span>
+                          {reply.maintenance_category ||
+                            "Maintenance request"}
+                        </span>
+
+                      </div>
+
+                    </div>
+
+                    <div className="dashboard-maintenance-arrow">
+                      <ArrowUpRight
+                        size={16}
+                      />
+                    </div>
+
+                  </div>
+                )
+              }
+            )}
+
+          </div>
+
+        )}
+
+      </section>
+
+      {/* RECENT MAINTENANCE */}
 
       <section className="dashboard-card dashboard-maintenance-card">
 
@@ -252,7 +510,8 @@ export default function Dashboard() {
             </h2>
 
             <p className="card-subtitle">
-              The latest maintenance issues requiring attention
+              The latest maintenance issues across
+              your properties.
             </p>
           </div>
 
@@ -299,8 +558,8 @@ export default function Dashboard() {
             </h3>
 
             <p>
-              New maintenance requests will appear here
-              when tenants report issues.
+              Create a maintenance request to get
+              started.
             </p>
 
             <button
@@ -351,13 +610,9 @@ export default function Dashboard() {
                     }}
                   >
 
-                    {/* Icon */}
-
                     <div className="dashboard-maintenance-icon">
                       <Wrench size={17} />
                     </div>
-
-                    {/* Content */}
 
                     <div className="dashboard-maintenance-content">
 
@@ -384,9 +639,9 @@ export default function Dashboard() {
                       <div className="dashboard-maintenance-meta">
 
                         <span>
-                          {formatStatus(
-                            request.status
-                          )}
+                          {request.property_address ||
+                            request.location ||
+                            "Property"}
                         </span>
 
                         <span>
@@ -398,8 +653,6 @@ export default function Dashboard() {
                       </div>
 
                     </div>
-
-                    {/* Arrow */}
 
                     <div className="dashboard-maintenance-arrow">
                       <ArrowUpRight
