@@ -17,20 +17,6 @@ import {
 } from "lucide-react"
 import { apiRequest } from "../services/api"
 
-const statuses = [
-  "open",
-  "in_progress",
-  "completed",
-  "cancelled",
-]
-
-const priorities = [
-  "low",
-  "normal",
-  "high",
-  "urgent",
-]
-
 export default function Maintenance() {
   const [requests, setRequests] = useState([])
   const [properties, setProperties] = useState([])
@@ -220,45 +206,6 @@ export default function Maintenance() {
     }
   }
 
-  async function updateRequest(id, updates) {
-    try {
-      setError("")
-
-      const updated = await apiRequest(
-        `/maintenance-requests/${id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify(updates),
-        }
-      )
-
-      if (updates.status === "completed") {
-        setRequests((current) =>
-          current.filter(
-            (request) => request.id !== id
-          )
-        )
-
-        return
-      }
-
-      setRequests((current) =>
-        current.map((request) =>
-          request.id === id
-            ? updated
-            : request
-        )
-      )
-    } catch (error) {
-      console.error(error)
-
-      setError(
-        error.message ||
-          "Could not update maintenance request"
-      )
-    }
-  }
-
   async function deleteRequest(request) {
     const confirmed = window.confirm(
       `Delete this maintenance request?\n\n"${request.description}"`
@@ -376,16 +323,6 @@ export default function Maintenance() {
     )
       ? request.external_workers
       : []
-  }
-
-  function formatStatus(status) {
-    if (!status) return ""
-
-    return status
-      .replaceAll("_", " ")
-      .replace(/\b\w/g, (letter) =>
-        letter.toUpperCase()
-      )
   }
 
   function formatPhone(phone) {
@@ -1170,66 +1107,6 @@ export default function Maintenance() {
                     </div>
 
                     <div className="maintenance-controls">
-                      <select
-                        id={`status-${request.id}`}
-                        name={`status-${request.id}`}
-                        value={request.status}
-                        onChange={(event) =>
-                          updateRequest(
-                            request.id,
-                            {
-                              status:
-                                event.target
-                                  .value,
-                            }
-                          )
-                        }
-                      >
-                        {statuses.map(
-                          (status) => (
-                            <option
-                              key={status}
-                              value={status}
-                            >
-                              {formatStatus(
-                                status
-                              )}
-                            </option>
-                          )
-                        )}
-                      </select>
-
-                      <select
-                        id={`priority-${request.id}`}
-                        name={`priority-${request.id}`}
-                        value={
-                          request.priority
-                        }
-                        onChange={(event) =>
-                          updateRequest(
-                            request.id,
-                            {
-                              priority:
-                                event.target
-                                  .value,
-                            }
-                          )
-                        }
-                      >
-                        {priorities.map(
-                          (priority) => (
-                            <option
-                              key={priority}
-                              value={
-                                priority
-                              }
-                            >
-                              {priority}
-                            </option>
-                          )
-                        )}
-                      </select>
-
                       <button
                         className="property-action delete"
                         onClick={() =>
