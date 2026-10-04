@@ -1,3 +1,4 @@
+
 from datetime import datetime, timezone
 from html import escape
 
@@ -5,7 +6,6 @@ from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-
 
 from backend.services.ai_maintenance import (
     analyse_maintenance_request
@@ -18,7 +18,6 @@ from backend.services.external_worker_search import (
 from backend.services.external_worker_ranking import (
     rank_external_workers
 )
-
 
 from backend.utils.audit import create_audit_log
 from backend.database import db
@@ -46,20 +45,6 @@ maintenance_bp = Blueprint(
     __name__
 )
 
-
-ALLOWED_STATUSES = {
-    "open",
-    "in_progress",
-    "completed",
-    "cancelled"
-}
-
-ALLOWED_PRIORITIES = {
-    "low",
-    "normal",
-    "high",
-    "urgent"
-}
 
 TARGET_EXTERNAL_CONTRACTORS = 20
 
@@ -285,7 +270,7 @@ def build_external_worker_email(
         <p>
             Please reply to this email with your
             availability and any relevant information
-            about completing this work.
+            about completing the work.
         </p>
     </div>
     """
@@ -1274,8 +1259,6 @@ def update_maintenance_request(
         }, 404
 
     allowed_fields = {
-        "status",
-        "priority",
         "category"
     }
 
@@ -1287,7 +1270,8 @@ def update_maintenance_request(
     if unexpected_fields:
         return {
             "error": (
-                "Request contains unsupported fields"
+                "Status and priority cannot be changed. "
+                "Only category can be updated."
             )
         }, 400
 
@@ -1298,45 +1282,7 @@ def update_maintenance_request(
             )
         }, 400
 
-    status = data.get("status")
-    priority = data.get("priority")
     category = data.get("category")
-
-    if status is not None:
-
-        if not isinstance(status, str):
-            return {
-                "error": "Status must be a string"
-            }, 400
-
-        status = status.strip().lower()
-
-        if status not in ALLOWED_STATUSES:
-            return {
-                "error": (
-                    "Invalid maintenance request status"
-                )
-            }, 400
-
-        maintenance_request.status = status
-
-    if priority is not None:
-
-        if not isinstance(priority, str):
-            return {
-                "error": "Priority must be a string"
-            }, 400
-
-        priority = priority.strip().lower()
-
-        if priority not in ALLOWED_PRIORITIES:
-            return {
-                "error": (
-                    "Invalid maintenance request priority"
-                )
-            }, 400
-
-        maintenance_request.priority = priority
 
     if category is not None:
 
@@ -1366,51 +1312,16 @@ def update_maintenance_request(
 
     try:
 
-        if status == "completed":
+        db.session.flush()
 
-            db.session.execute(
-                delete(ExternalWorkerMessage).where(
-                    ExternalWorkerMessage
-                    .maintenance_request_id
-                    == maintenance_request.id
-                )
-            )
-
-            db.session.execute(
-                delete(
-                    ExternalWorkerCandidate
-                ).where(
-                    ExternalWorkerCandidate
-                    .maintenance_request_id
-                    == maintenance_request.id
-                )
-            )
-
-            create_audit_log(
-                user=user,
-                action=(
-                    "maintenance_request_completed"
-                ),
-                resource_type="maintenance_request",
-                resource_id=maintenance_request.id
-            )
-
-            db.session.delete(
-                maintenance_request
-            )
-
-        else:
-
-            db.session.flush()
-
-            create_audit_log(
-                user=user,
-                action=(
-                    "maintenance_request_updated"
-                ),
-                resource_type="maintenance_request",
-                resource_id=maintenance_request.id
-            )
+        create_audit_log(
+            user=user,
+            action=(
+                "maintenance_request_updated"
+            ),
+            resource_type="maintenance_request",
+            resource_id=maintenance_request.id
+        )
 
         db.session.commit()
 
@@ -1436,16 +1347,6 @@ def update_maintenance_request(
                 "not be updated"
             )
         }, 500
-
-    if status == "completed":
-
-        return {
-            "message": (
-                "Maintenance request completed "
-                "and removed"
-            ),
-            "id": maintenance_request_id
-        }, 200
 
     return maintenance_request_response(
         maintenance_request
