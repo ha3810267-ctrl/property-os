@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import AppLayout from "./layouts/AppLayout"
 
 import Dashboard from "./pages/Dashboard"
+import Properties from "./pages/Properties"
 import Login from "./pages/Login"
 import Maintenance from "./pages/Maintenance"
 import Account from "./pages/Account"
@@ -81,6 +82,11 @@ function App() {
           <Route
             path="/"
             element={<Dashboard />}
+          />
+
+          <Route
+            path="/properties"
+            element={<Properties />}
           />
 
           <Route
