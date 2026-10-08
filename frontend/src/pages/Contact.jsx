@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { Mail } from "lucide-react"
 import { apiRequest } from "../services/api"
-import "./Contact.css"
 
 export default function Contact() {
   const [form, setForm] = useState({
@@ -27,6 +26,7 @@ export default function Contact() {
 
   async function handleSubmit(event) {
     event.preventDefault()
+
     setFeedback(null)
     setLoading(true)
 
@@ -67,9 +67,12 @@ export default function Contact() {
   }
 
   return (
-    <div className="contact-page">
-      <div className="page-header">
-        <div>
+    <div className="dashboard-page contact-page">
+
+      <div className="properties-header">
+
+        <div className="properties-title">
+
           <p className="eyebrow">
             Support
           </p>
@@ -82,118 +85,117 @@ export default function Contact() {
             Have a question or need help with PropertyOS?
             Send us a message and we'll get back to you.
           </p>
+
         </div>
+
       </div>
 
-      <div className="contact-layout">
-        <section className="contact-info-card">
-          <div className="contact-info-icon">
-            <Mail size={22} />
+      <div className="dashboard-card">
+
+        <div className="card-header">
+
+          <div>
+
+            <p className="eyebrow">
+              GET IN TOUCH
+            </p>
+
+            <h2>
+              Send us a message
+            </h2>
+
+            <p className="card-subtitle">
+              Fill in the form below and we'll get back
+              to you as soon as possible.
+            </p>
+
           </div>
 
-          <p className="eyebrow">
-            GET IN TOUCH
-          </p>
+          <Mail size={20} />
 
-          <h2>
-            We're here to help
-          </h2>
+        </div>
 
-          <p>
-            Whether you have a question about PropertyOS,
-            need help with your account, or want to give us
-            feedback, send us a message and we'll get back
-            to you.
-          </p>
-        </section>
+        <form
+          onSubmit={handleSubmit}
+          className="contact-form"
+        >
 
-        <section className="contact-form-card">
-          <form
-            className="contact-form"
-            onSubmit={handleSubmit}
-          >
-            <div className="contact-field">
-              <label htmlFor="contact-name">
-                Your name
-              </label>
+          <label>
+            Your name
 
-              <input
-                id="contact-name"
-                name="name"
-                type="text"
-                autoComplete="name"
-                placeholder="Enter your name"
-                value={form.name}
-                onChange={handleChange}
-                maxLength={120}
-                required
-              />
+            <input
+              name="name"
+              type="text"
+              autoComplete="name"
+              placeholder="Enter your name"
+              value={form.name}
+              onChange={handleChange}
+              maxLength={120}
+              disabled={loading}
+              required
+            />
+          </label>
+
+          <label>
+            Email address
+
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={form.email}
+              onChange={handleChange}
+              maxLength={254}
+              disabled={loading}
+              required
+            />
+          </label>
+
+          <label>
+            Subject
+
+            <input
+              name="subject"
+              type="text"
+              placeholder="What can we help with?"
+              value={form.subject}
+              onChange={handleChange}
+              maxLength={200}
+              disabled={loading}
+              required
+            />
+          </label>
+
+          <label>
+            Message
+
+            <textarea
+              name="message"
+              placeholder="Tell us how we can help..."
+              value={form.message}
+              onChange={handleChange}
+              rows={7}
+              maxLength={5000}
+              disabled={loading}
+              required
+            />
+          </label>
+
+          {feedback && (
+            <div
+              className={`contact-feedback ${feedback.type}`}
+              role="status"
+            >
+              {feedback.message}
             </div>
+          )}
 
-            <div className="contact-field">
-              <label htmlFor="contact-email">
-                Email address
-              </label>
-
-              <input
-                id="contact-email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                value={form.email}
-                onChange={handleChange}
-                maxLength={254}
-                required
-              />
-            </div>
-
-            <div className="contact-field">
-              <label htmlFor="contact-subject">
-                Subject
-              </label>
-
-              <input
-                id="contact-subject"
-                name="subject"
-                type="text"
-                placeholder="What can we help with?"
-                value={form.subject}
-                onChange={handleChange}
-                maxLength={200}
-                required
-              />
-            </div>
-
-            <div className="contact-field">
-              <label htmlFor="contact-message">
-                Message
-              </label>
-
-              <textarea
-                id="contact-message"
-                name="message"
-                placeholder="Tell us how we can help..."
-                value={form.message}
-                onChange={handleChange}
-                rows={7}
-                maxLength={5000}
-                required
-              />
-            </div>
-
-            {feedback && (
-              <div
-                className={`contact-feedback ${feedback.type}`}
-                role="status"
-              >
-                {feedback.message}
-              </div>
-            )}
+          <div className="modal-actions">
 
             <button
-              className="primary-button contact-submit"
               type="submit"
+              className="primary-button"
               disabled={loading}
             >
               <Mail size={17} />
@@ -203,13 +205,17 @@ export default function Contact() {
                 : "Send message"}
             </button>
 
-            <p className="contact-privacy">
-              Your message will be sent privately to the
-              PropertyOS team.
-            </p>
-          </form>
-        </section>
+          </div>
+
+          <p className="contact-privacy">
+            Your message will be sent privately to the
+            PropertyOS team.
+          </p>
+
+        </form>
+
       </div>
+
     </div>
   )
 }
