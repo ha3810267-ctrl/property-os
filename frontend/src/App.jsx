@@ -1,3 +1,4 @@
+
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 
 import AppLayout from "./layouts/AppLayout"
@@ -9,7 +10,7 @@ import Maintenance from "./pages/Maintenance"
 import Account from "./pages/Account"
 import ResetPassword from "./pages/ResetPassword"
 import ForgotPassword from "./pages/ForgotPassword"
-
+import Contact from "./pages/Contact"
 
 function getUserFromToken() {
   const token = localStorage.getItem("access_token")
@@ -33,7 +34,6 @@ function getUserFromToken() {
   }
 }
 
-
 function ProtectedRoute({ children }) {
   const user = getUserFromToken()
 
@@ -44,33 +44,17 @@ function ProtectedRoute({ children }) {
   return children
 }
 
-
 function App() {
   return (
     <BrowserRouter>
-
       <Routes>
-
         {/* Public */}
-
-        <Route
-          path="/login"
-          element={<Login />}
-        />
-
-        <Route
-          path="/forgot-password"
-          element={<ForgotPassword />}
-        />
-
-        <Route
-          path="/reset-password"
-          element={<ResetPassword />}
-        />
-
+        <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/contact" element={<Contact />} />
 
         {/* Authenticated */}
-
         <Route
           element={
             <ProtectedRoute>
@@ -78,42 +62,17 @@ function App() {
             </ProtectedRoute>
           }
         >
-
-          <Route
-            path="/"
-            element={<Dashboard />}
-          />
-
-          <Route
-            path="/properties"
-            element={<Properties />}
-          />
-
-          <Route
-            path="/maintenance"
-            element={<Maintenance />}
-          />
-
-          <Route
-            path="/account"
-            element={<Account />}
-          />
-
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/properties" element={<Properties />} />
+          <Route path="/maintenance" element={<Maintenance />} />
+          <Route path="/account" element={<Account />} />
         </Route>
 
-
         {/* Unknown route */}
-
-        <Route
-          path="*"
-          element={<Navigate to="/" replace />}
-        />
-
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-
     </BrowserRouter>
   )
 }
-
 
 export default App

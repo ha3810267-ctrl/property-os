@@ -1,4 +1,3 @@
-
 import { NavLink, Outlet, Navigate } from "react-router-dom"
 import {
   LayoutDashboard,
@@ -6,6 +5,7 @@ import {
   Wrench,
   UserRound,
   LogOut,
+  Mail,
 } from "lucide-react"
 
 export default function AppLayout() {
@@ -54,6 +54,11 @@ export default function AppLayout() {
             <span>Maintenance</span>
           </NavLink>
 
+          <NavLink to="/contact">
+            <Mail size={18} />
+            <span>Contact Us</span>
+          </NavLink>
+
         </nav>
 
         <div className="sidebar-bottom">
@@ -82,7 +87,3 @@ export default function AppLayout() {
     </div>
   )
 }
-
-
-
-

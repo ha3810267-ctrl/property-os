@@ -1,4 +1,3 @@
-
 import flask
 import os
 
@@ -15,6 +14,10 @@ from backend.routes.service_provider_invitations import (
 
 from backend.routes.resend_webhooks import (
     resend_webhooks_bp
+)
+
+from backend.routes.contact import (
+    contact_bp
 )
 
 from flask_migrate import Migrate
@@ -141,6 +144,10 @@ app.register_blueprint(
 
 app.register_blueprint(
     resend_webhooks_bp
+)
+
+app.register_blueprint(
+    contact_bp
 )
 
 
