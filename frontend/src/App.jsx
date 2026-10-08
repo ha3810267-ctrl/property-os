@@ -1,4 +1,3 @@
-
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 
 import AppLayout from "./layouts/AppLayout"
@@ -48,13 +47,12 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public */}
+        {/* Public routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/contact" element={<Contact />} />
 
-        {/* Authenticated */}
+        {/* Authenticated routes — use AppLayout and its sidebar */}
         <Route
           element={
             <ProtectedRoute>
@@ -65,6 +63,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/properties" element={<Properties />} />
           <Route path="/maintenance" element={<Maintenance />} />
+          <Route path="/contact" element={<Contact />} />
           <Route path="/account" element={<Account />} />
         </Route>
 
