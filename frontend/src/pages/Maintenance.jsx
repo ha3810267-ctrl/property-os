@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react"
 import {
   Wrench,
@@ -34,9 +35,6 @@ export default function Maintenance() {
   const [searchingExternalWorker, setSearchingExternalWorker] =
     useState(null)
 
-  const [selectingExternalWorker, setSelectingExternalWorker] =
-    useState(null)
-
   const [expandedReplies, setExpandedReplies] = useState({})
 
   async function loadData() {
@@ -63,11 +61,7 @@ export default function Maintenance() {
       )
     } catch (error) {
       console.error(error)
-
-      setError(
-        error.message ||
-          "Unable to load maintenance"
-      )
+      setError(error.message || "Unable to load maintenance")
     } finally {
       setLoading(false)
     }
@@ -86,13 +80,8 @@ export default function Maintenance() {
     }))
   }
 
-  function isReplyExpanded(
-    requestId,
-    candidateId,
-    replyId
-  ) {
+  function isReplyExpanded(requestId, candidateId, replyId) {
     const key = `${requestId}-${candidateId}-${replyId}`
-
     return expandedReplies[key] === true
   }
 
@@ -147,27 +136,19 @@ export default function Maintenance() {
     setFormError("")
 
     if (!propertyId) {
-      setFormError(
-        "Please select a property"
-      )
+      setFormError("Please select a property")
       return
     }
 
     if (!description.trim()) {
-      setFormError(
-        "Maintenance description is required"
-      )
+      setFormError("Maintenance description is required")
       return
     }
 
-    const property = getProperty(
-      Number(propertyId)
-    )
+    const property = getProperty(Number(propertyId))
 
     if (!property) {
-      setFormError(
-        "Selected property could not be found"
-      )
+      setFormError("Selected property could not be found")
       return
     }
 
@@ -196,10 +177,8 @@ export default function Maintenance() {
       setFormError("")
     } catch (error) {
       console.error(error)
-
       setFormError(
-        error.message ||
-          "Could not create maintenance request"
+        error.message || "Could not create maintenance request"
       )
     } finally {
       setSaving(false)
@@ -224,24 +203,17 @@ export default function Maintenance() {
       )
 
       setRequests((current) =>
-        current.filter(
-          (item) =>
-            item.id !== request.id
-        )
+        current.filter((item) => item.id !== request.id)
       )
     } catch (error) {
       console.error(error)
-
       setError(
-        error.message ||
-          "Could not delete maintenance request"
+        error.message || "Could not delete maintenance request"
       )
     }
   }
 
-  async function searchExternalWorkers(
-    requestId
-  ) {
+  async function searchExternalWorkers(requestId) {
     try {
       setSearchingExternalWorker(requestId)
       setError("")
@@ -253,8 +225,7 @@ export default function Maintenance() {
         }
       )
 
-      const updated =
-        result?.maintenance_request
+      const updated = result?.maintenance_request
 
       if (!updated) {
         throw new Error(
@@ -271,141 +242,65 @@ export default function Maintenance() {
       )
     } catch (error) {
       console.error(error)
-
       setError(
-        error.message ||
-          "Could not search for external workers"
+        error.message || "Could not search for external workers"
       )
     } finally {
       setSearchingExternalWorker(null)
     }
   }
 
-  async function selectExternalWorker(
-    requestId,
-    candidateId
-  ) {
-    const key = `${requestId}-${candidateId}`
-
-    try {
-      setSelectingExternalWorker(key)
-      setError("")
-
-      const updated = await apiRequest(
-        `/maintenance-requests/${requestId}/external-workers/${candidateId}/select`,
-        {
-          method: "POST",
-        }
-      )
-
-      setRequests((current) =>
-        current.map((request) =>
-          request.id === requestId
-            ? updated
-            : request
-        )
-      )
-    } catch (error) {
-      console.error(error)
-
-      setError(
-        error.message ||
-          "Could not select external worker"
-      )
-    } finally {
-      setSelectingExternalWorker(null)
-    }
-  }
-
   function getExternalWorkers(request) {
-    return Array.isArray(
-      request.external_workers
-    )
+    return Array.isArray(request.external_workers)
       ? request.external_workers
       : []
-  }
-
-  function formatPhone(phone) {
-    if (!phone) return null
-
-    return phone
   }
 
   function formatMatchScore(score) {
     if (score == null) return null
 
-    return Math.round(
-      Number(score) * 100
-    )
+    return Math.round(Number(score) * 100)
   }
 
-  const filteredRequests = requests.filter(
-    (request) => {
-      if (request.status === "completed") {
-        return false
-      }
-
-      const property = getProperty(
-        request.property_id
-      )
-
-      const externalWorkers =
-        getExternalWorkers(request)
-
-      const externalWorkerNames =
-        externalWorkers
-          .map(
-            (worker) =>
-              worker.name || ""
-          )
-          .join(" ")
-
-      const term =
-        search.trim().toLowerCase()
-
-      if (!term) {
-        return true
-      }
-
-      return (
-        request.description
-          ?.toLowerCase()
-          .includes(term) ||
-        request.category
-          ?.toLowerCase()
-          .includes(term) ||
-        property?.name
-          ?.toLowerCase()
-          .includes(term) ||
-        property?.address
-          ?.toLowerCase()
-          .includes(term) ||
-        externalWorkerNames
-          .toLowerCase()
-          .includes(term)
-      )
+  const filteredRequests = requests.filter((request) => {
+    if (request.status === "completed") {
+      return false
     }
-  )
 
-  const completedRequests =
-    requests.filter(
-      (request) =>
-        request.status === "completed"
+    const property = getProperty(request.property_id)
+    const externalWorkers = getExternalWorkers(request)
+
+    const externalWorkerNames = externalWorkers
+      .map((worker) => worker.name || "")
+      .join(" ")
+
+    const term = search.trim().toLowerCase()
+
+    if (!term) return true
+
+    return (
+      request.description?.toLowerCase().includes(term) ||
+      request.category?.toLowerCase().includes(term) ||
+      property?.name?.toLowerCase().includes(term) ||
+      property?.address?.toLowerCase().includes(term) ||
+      externalWorkerNames.toLowerCase().includes(term)
     )
+  })
+
+  const completedRequests = requests.filter(
+    (request) => request.status === "completed"
+  )
 
   return (
     <div className="dashboard-page maintenance-page">
       <div className="properties-header">
         <div className="properties-title">
-          <p className="eyebrow">
-            Operations
-          </p>
+          <p className="eyebrow">Operations</p>
 
           <h1>Maintenance</h1>
 
           <p className="page-subtitle">
-            Track and manage maintenance requests
-            across your properties
+            Track and manage maintenance requests across your properties
           </p>
         </div>
 
@@ -413,9 +308,7 @@ export default function Maintenance() {
           <button
             className="primary-button"
             onClick={openModal}
-            disabled={
-              properties.length === 0
-            }
+            disabled={properties.length === 0}
           >
             <Plus size={17} />
             Add request
@@ -431,9 +324,7 @@ export default function Maintenance() {
             id="maintenance-search"
             name="maintenance-search"
             value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Search maintenance requests..."
           />
         </div>
@@ -448,10 +339,7 @@ export default function Maintenance() {
       {!loading && error && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>
-              Unable to load maintenance
-            </h3>
-
+            <h3>Unable to load maintenance</h3>
             <p>{error}</p>
 
             <button
@@ -467,9 +355,7 @@ export default function Maintenance() {
       {loading && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>
-              Loading maintenance...
-            </h3>
+            <h3>Loading maintenance...</h3>
           </div>
         </div>
       )}
@@ -484,9 +370,7 @@ export default function Maintenance() {
                 <Wrench size={21} />
               </div>
 
-              <h3>
-                No maintenance requests
-              </h3>
+              <h3>No maintenance requests</h3>
 
               <p>
                 {properties.length === 0
@@ -511,627 +395,361 @@ export default function Maintenance() {
         !error &&
         filteredRequests.length > 0 && (
           <div className="maintenance-list">
-            {filteredRequests.map(
-              (request) => {
-                const property =
-                  getProperty(
-                    request.property_id
-                  )
+            {filteredRequests.map((request) => {
+              const property = getProperty(request.property_id)
+              const externalWorkers = getExternalWorkers(request)
 
-                const externalWorkers =
-                  getExternalWorkers(request)
+              const selectedExternalWorker = externalWorkers.find(
+                (worker) => worker.is_selected === true
+              )
 
-                const selectedExternalWorker =
-                  externalWorkers.find(
-                    (worker) =>
-                      worker.is_selected ===
-                      true
-                  )
+              const isSearchingExternal =
+                searchingExternalWorker === request.id
 
-                const isSearchingExternal =
-                  searchingExternalWorker ===
-                  request.id
+              return (
+                <div
+                  className={`maintenance-card priority-${request.priority}`}
+                  key={request.id}
+                >
+                  <div className="maintenance-card-main">
+                    <div className="maintenance-icon">
+                      <Wrench size={20} />
+                    </div>
 
-                return (
-                  <div
-                    className={`maintenance-card priority-${request.priority}`}
-                    key={request.id}
-                  >
-                    <div className="maintenance-card-main">
-                      <div className="maintenance-icon">
-                        <Wrench size={20} />
+                    <div className="maintenance-content">
+                      <div className="maintenance-top">
+                        <h2>
+                          {request.category || "Maintenance request"}
+                        </h2>
+
+                        <span
+                          className={`priority-badge ${request.priority}`}
+                        >
+                          {request.priority}
+                        </span>
                       </div>
 
-                      <div className="maintenance-content">
-                        <div className="maintenance-top">
-                          <h2>
-                            {request.category ||
-                              "Maintenance request"}
-                          </h2>
+                      <p className="maintenance-description">
+                        {request.description}
+                      </p>
 
-                          <span
-                            className={`priority-badge ${request.priority}`}
+                      <div className="maintenance-meta">
+                        <span>
+                          {property?.name || "Unknown property"}
+                        </span>
+
+                        <span>
+                          {request.location ||
+                            property?.address ||
+                            "Location unavailable"}
+                        </span>
+
+                        <span>
+                          {new Date(
+                            request.created_at
+                          ).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      {!selectedExternalWorker && (
+                        <div className="external-worker-search">
+                          <div>
+                            <div className="section-label">
+                              Need an external contractor?
+                            </div>
+
+                            <p>
+                              Search for suitable contractors for this
+                              maintenance request.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() =>
+                              searchExternalWorkers(request.id)
+                            }
+                            disabled={isSearchingExternal}
                           >
-                            {request.priority}
-                          </span>
+                            <ExternalLink size={16} />
+
+                            {isSearchingExternal
+                              ? "Finding contractors..."
+                              : "Find contractors"}
+                          </button>
                         </div>
+                      )}
 
-                        <p className="maintenance-description">
-                          {
-                            request.description
-                          }
-                        </p>
-
-                        <div className="maintenance-meta">
-                          <span>
-                            {property?.name ||
-                              "Unknown property"}
-                          </span>
-
-                          <span>
-                            {request.location ||
-                              property?.address ||
-                              "Location unavailable"}
-                          </span>
-
-                          <span>
-                            {new Date(
-                              request.created_at
-                            ).toLocaleDateString()}
-                          </span>
-                        </div>
-
-                        {!selectedExternalWorker && (
-                          <div className="external-worker-search">
+                      {externalWorkers.length > 0 && (
+                        <div className="external-worker-section">
+                          <div className="external-worker-header">
                             <div>
-                              <div className="section-label">
-                                Need an external contractor?
+                              <div className="external-worker-title-row">
+                                <span className="ai-assignment">
+                                  <Sparkles size={13} />
+                                  External contractors
+                                </span>
+
+                                <span className="external-worker-count">
+                                  {externalWorkers.length}
+                                </span>
                               </div>
+
+                              <h3>Recommended contractors</h3>
 
                               <p>
-                                Search for suitable
-                                contractors for this
-                                maintenance request.
+                                Contractors matched to this request.
+                                Those with public email addresses are
+                                contacted automatically.
                               </p>
                             </div>
-
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() =>
-                                searchExternalWorkers(
-                                  request.id
-                                )
-                              }
-                              disabled={
-                                isSearchingExternal
-                              }
-                            >
-                              <ExternalLink
-                                size={16}
-                              />
-
-                              {isSearchingExternal
-                                ? "Finding contractors..."
-                                : "Find contractors"}
-                            </button>
                           </div>
-                        )}
 
-                        {externalWorkers.length >
-                          0 && (
-                          <div className="external-worker-section">
-                            <div className="external-worker-header">
-                              <div>
-                                <div className="external-worker-title-row">
-                                  <span className="ai-assignment">
-                                    <Sparkles
-                                      size={13}
-                                    />
-                                    External contractors
-                                  </span>
+                          {selectedExternalWorker ? (
+                            <div className="external-worker-card selected">
+                              <div className="external-worker-main">
+                                <div className="external-worker-card-header">
+                                  <div className="external-worker-identity">
+                                    <strong>
+                                      {selectedExternalWorker.name}
+                                    </strong>
 
-                                  <span className="external-worker-count">
-                                    {externalWorkers.length}
-                                  </span>
-                                </div>
-
-                                <h3>
-                                  Recommended contractors
-                                </h3>
-
-                                <p>
-                                  Contractors matched to this request.
-                                  Those with public email addresses are
-                                  contacted automatically.
-                                </p>
-                              </div>
-                            </div>
-
-                            {selectedExternalWorker ? (
-                              <div className="external-worker-card selected">
-                                <div className="external-worker-main">
-                                  <div className="external-worker-card-header">
-                                    <div className="external-worker-identity">
-                                      <strong>
-                                        {
-                                          selectedExternalWorker.name
-                                        }
-                                      </strong>
-
-                                      <span className="contractor-trade">
-                                        {
-                                          selectedExternalWorker.trade
-                                        }
-                                      </span>
-                                    </div>
-
-                                    <span className="selected-badge">
-                                      <Check
-                                        size={13}
-                                      />
-                                      Selected
+                                    <span className="contractor-trade">
+                                      {selectedExternalWorker.trade}
                                     </span>
                                   </div>
 
-                                  <div className="contractor-quick-info">
-                                    {selectedExternalWorker.rating !=
-                                      null && (
-                                      <div className="contractor-stat">
-                                        <Star
-                                          size={14}
-                                        />
+                                  <span className="selected-badge">
+                                    <Check size={13} />
+                                    Selected
+                                  </span>
+                                </div>
 
-                                        <div>
-                                          <strong>
-                                            {
-                                              selectedExternalWorker.rating
-                                            }
-                                          </strong>
+                                <div className="contractor-quick-info">
+                                  {selectedExternalWorker.rating != null && (
+                                    <div className="contractor-stat">
+                                      <Star size={14} />
 
-                                          {selectedExternalWorker.review_count !=
-                                            null && (
-                                            <span>
-                                              {
-                                                selectedExternalWorker.review_count
-                                              }{" "}
-                                              reviews
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {selectedExternalWorker.availability && (
-                                      <div className="contractor-stat">
-                                        <Check
-                                          size={14}
-                                        />
-
-                                        <div>
-                                          <strong>
-                                            Availability
-                                          </strong>
-
-                                          <span>
-                                            {
-                                              selectedExternalWorker.availability
-                                            }
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {selectedExternalWorker.location && (
-                                      <div className="contractor-stat">
-                                        <MapPin
-                                          size={14}
-                                        />
-
-                                        <div>
-                                          <strong>
-                                            Location
-                                          </strong>
-
-                                          <span>
-                                            {
-                                              selectedExternalWorker.location
-                                            }
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  <div className="contractor-contact-row">
-                                    {formatPhone(
-                                      selectedExternalWorker.phone
-                                    ) && (
-                                      <span>
-                                        <Phone
-                                          size={14}
-                                        />
-
-                                        {
-                                          selectedExternalWorker.phone
-                                        }
-                                      </span>
-                                    )}
-
-                                    {selectedExternalWorker.email && (
-                                      <span>
-                                        {
-                                          selectedExternalWorker.email
-                                        }
-                                      </span>
-                                    )}
-
-                                    {selectedExternalWorker.website && (
-                                      <a
-                                        href={
-                                          selectedExternalWorker.website
-                                        }
-                                        target="_blank"
-                                        rel="noreferrer"
-                                      >
-                                        <ExternalLink
-                                          size={14}
-                                        />
-                                        Website
-                                      </a>
-                                    )}
-                                  </div>
-
-                                  {selectedExternalWorker.match_score !=
-                                    null && (
-                                    <div className="contractor-match">
-                                      <div className="contractor-match-top">
-                                        <span>
-                                          AI match score
-                                        </span>
-
+                                      <div>
                                         <strong>
-                                          {
-                                            formatMatchScore(
-                                              selectedExternalWorker.match_score
-                                            )
-                                          }
-                                          %
+                                          {selectedExternalWorker.rating}
                                         </strong>
-                                      </div>
 
-                                      <div className="match-bar">
-                                        <div
-                                          style={{
-                                            width: `${formatMatchScore(
-                                              selectedExternalWorker.match_score
-                                            )}%`,
-                                          }}
-                                        />
+                                        {selectedExternalWorker.review_count !=
+                                          null && (
+                                          <span>
+                                            {selectedExternalWorker.review_count}{" "}
+                                            reviews
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   )}
 
-                                  {selectedExternalWorker.match_reason && (
-                                    <p className="match-reason">
-                                      {
-                                        selectedExternalWorker.match_reason
-                                      }
-                                    </p>
+                                  {selectedExternalWorker.availability && (
+                                    <div className="contractor-stat">
+                                      <Check size={14} />
+
+                                      <div>
+                                        <strong>Availability</strong>
+                                        <span>
+                                          {selectedExternalWorker.availability}
+                                        </span>
+                                      </div>
+                                    </div>
                                   )}
 
-                                  <ContractorReplies
-                                    requestId={request.id}
-                                    worker={
-                                      selectedExternalWorker
-                                    }
-                                    expandedReplies={
-                                      expandedReplies
-                                    }
-                                    toggleReply={
-                                      toggleReply
-                                    }
-                                    isReplyExpanded={
-                                      isReplyExpanded
-                                    }
-                                    formatReplyDate={
-                                      formatReplyDate
-                                    }
-                                    getReplyContent={
-                                      getReplyContent
-                                    }
-                                  />
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="external-worker-list">
-                                {externalWorkers.map(
-                                  (
-                                    worker
-                                  ) => {
-                                    const workerKey =
-                                      `${request.id}-${worker.id}`
+                                  {selectedExternalWorker.location && (
+                                    <div className="contractor-stat">
+                                      <MapPin size={14} />
 
-                                    const isSelecting =
-                                      selectingExternalWorker ===
-                                      workerKey
-
-                                    const matchScore =
-                                      formatMatchScore(
-                                        worker.match_score
-                                      )
-
-                                    return (
-                                      <div
-                                        className="external-worker-card"
-                                        key={`${request.id}-${worker.provider}-${worker.external_id}`}
-                                      >
-                                        <div className="external-worker-main">
-                                          <div className="external-worker-card-header">
-                                            <div className="external-worker-identity">
-                                              <strong>
-                                                {
-                                                  worker.name
-                                                }
-                                              </strong>
-
-                                              <span className="contractor-trade">
-                                                {
-                                                  worker.trade
-                                                }
-                                              </span>
-                                            </div>
-
-                                            {matchScore !=
-                                              null && (
-                                              <div className="match-score-badge">
-                                                <span>
-                                                  Match
-                                                </span>
-
-                                                <strong>
-                                                  {
-                                                    matchScore
-                                                  }
-                                                  %
-                                                </strong>
-                                              </div>
-                                            )}
-                                          </div>
-
-                                          <div className="contractor-quick-info">
-                                            {worker.rating !=
-                                              null && (
-                                              <div className="contractor-stat">
-                                                <Star
-                                                  size={
-                                                    14
-                                                  }
-                                                />
-
-                                                <div>
-                                                  <strong>
-                                                    {
-                                                      worker.rating
-                                                    }
-                                                  </strong>
-
-                                                  {worker.review_count !=
-                                                    null && (
-                                                    <span>
-                                                      {
-                                                        worker.review_count
-                                                      }{" "}
-                                                      reviews
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            )}
-
-                                            {worker.availability && (
-                                              <div className="contractor-stat">
-                                                <Check
-                                                  size={
-                                                    14
-                                                  }
-                                                />
-
-                                                <div>
-                                                  <strong>
-                                                    Availability
-                                                  </strong>
-
-                                                  <span>
-                                                    {
-                                                      worker.availability
-                                                    }
-                                                  </span>
-                                                </div>
-                                              </div>
-                                            )}
-
-                                            {worker.location && (
-                                              <div className="contractor-stat">
-                                                <MapPin
-                                                  size={
-                                                    14
-                                                  }
-                                                />
-
-                                                <div>
-                                                  <strong>
-                                                    Location
-                                                  </strong>
-
-                                                  <span>
-                                                    {
-                                                      worker.location
-                                                    }
-                                                  </span>
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-
-                                          <div className="contractor-contact-row">
-                                            {formatPhone(
-                                              worker.phone
-                                            ) && (
-                                              <span>
-                                                <Phone
-                                                  size={
-                                                    14
-                                                  }
-                                                />
-
-                                                {
-                                                  worker.phone
-                                                }
-                                              </span>
-                                            )}
-
-                                            {worker.email && (
-                                              <span>
-                                                {
-                                                  worker.email
-                                                }
-                                              </span>
-                                            )}
-
-                                            {worker.website && (
-                                              <a
-                                                href={
-                                                  worker.website
-                                                }
-                                                target="_blank"
-                                                rel="noreferrer"
-                                              >
-                                                <ExternalLink
-                                                  size={
-                                                    14
-                                                  }
-                                                />
-                                                Website
-                                              </a>
-                                            )}
-                                          </div>
-
-                                          {matchScore !=
-                                            null && (
-                                            <div className="contractor-match">
-                                              <div className="contractor-match-top">
-                                                <span>
-                                                  AI match score
-                                                </span>
-
-                                                <strong>
-                                                  {
-                                                    matchScore
-                                                  }
-                                                  %
-                                                </strong>
-                                              </div>
-
-                                              <div className="match-bar">
-                                                <div
-                                                  style={{
-                                                    width: `${matchScore}%`,
-                                                  }}
-                                                />
-                                              </div>
-                                            </div>
-                                          )}
-
-                                          {worker.match_reason && (
-                                            <p className="match-reason">
-                                              {
-                                                worker.match_reason
-                                              }
-                                            </p>
-                                          )}
-
-                                          <ContractorReplies
-                                            requestId={
-                                              request.id
-                                            }
-                                            worker={
-                                              worker
-                                            }
-                                            expandedReplies={
-                                              expandedReplies
-                                            }
-                                            toggleReply={
-                                              toggleReply
-                                            }
-                                            isReplyExpanded={
-                                              isReplyExpanded
-                                            }
-                                            formatReplyDate={
-                                              formatReplyDate
-                                            }
-                                            getReplyContent={
-                                              getReplyContent
-                                            }
-                                          />
-                                        </div>
-
-                                        <div className="external-worker-action">
-                                          <button
-                                            type="button"
-                                            className="primary-button"
-                                            disabled={
-                                              isSelecting
-                                            }
-                                            onClick={() =>
-                                              selectExternalWorker(
-                                                request.id,
-                                                worker.id
-                                              )
-                                            }
-                                          >
-                                            {isSelecting
-                                              ? "Selecting..."
-                                              : "Use contractor"}
-                                          </button>
-                                        </div>
+                                      <div>
+                                        <strong>Location</strong>
+                                        <span>
+                                          {selectedExternalWorker.location}
+                                        </span>
                                       </div>
-                                    )
-                                  }
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                                    </div>
+                                  )}
+                                </div>
 
-                    <div className="maintenance-controls">
-                      <button
-                        className="property-action delete"
-                        onClick={() =>
-                          deleteRequest(
-                            request
-                          )
-                        }
-                        title="Delete maintenance request"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                                <ContractorContact worker={selectedExternalWorker} />
+
+                                {selectedExternalWorker.match_score != null && (
+                                  <div className="contractor-match">
+                                    <div className="contractor-match-top">
+                                      <span>AI match score</span>
+
+                                      <strong>
+                                        {formatMatchScore(
+                                          selectedExternalWorker.match_score
+                                        )}
+                                        %
+                                      </strong>
+                                    </div>
+
+                                    <div className="match-bar">
+                                      <div
+                                        style={{
+                                          width: `${formatMatchScore(
+                                            selectedExternalWorker.match_score
+                                          )}%`,
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {selectedExternalWorker.match_reason && (
+                                  <p className="match-reason">
+                                    {selectedExternalWorker.match_reason}
+                                  </p>
+                                )}
+
+                                <ContractorReplies
+                                  requestId={request.id}
+                                  worker={selectedExternalWorker}
+                                  toggleReply={toggleReply}
+                                  isReplyExpanded={isReplyExpanded}
+                                  formatReplyDate={formatReplyDate}
+                                  getReplyContent={getReplyContent}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="external-worker-list">
+                              {externalWorkers.map((worker) => {
+                                const matchScore = formatMatchScore(
+                                  worker.match_score
+                                )
+
+                                return (
+                                  <div
+                                    className="external-worker-card"
+                                    key={`${request.id}-${worker.provider}-${worker.external_id}`}
+                                  >
+                                    <div className="external-worker-main">
+                                      <div className="external-worker-card-header">
+                                        <div className="external-worker-identity">
+                                          <strong>{worker.name}</strong>
+
+                                          <span className="contractor-trade">
+                                            {worker.trade}
+                                          </span>
+                                        </div>
+
+                                        {matchScore != null && (
+                                          <div className="match-score-badge">
+                                            <span>Match</span>
+                                            <strong>{matchScore}%</strong>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="contractor-quick-info">
+                                        {worker.rating != null && (
+                                          <div className="contractor-stat">
+                                            <Star size={14} />
+
+                                            <div>
+                                              <strong>{worker.rating}</strong>
+
+                                              {worker.review_count != null && (
+                                                <span>
+                                                  {worker.review_count} reviews
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {worker.availability && (
+                                          <div className="contractor-stat">
+                                            <Check size={14} />
+
+                                            <div>
+                                              <strong>Availability</strong>
+                                              <span>{worker.availability}</span>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {worker.location && (
+                                          <div className="contractor-stat">
+                                            <MapPin size={14} />
+
+                                            <div>
+                                              <strong>Location</strong>
+                                              <span>{worker.location}</span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <ContractorContact worker={worker} />
+
+                                      {matchScore != null && (
+                                        <div className="contractor-match">
+                                          <div className="contractor-match-top">
+                                            <span>AI match score</span>
+                                            <strong>{matchScore}%</strong>
+                                          </div>
+
+                                          <div className="match-bar">
+                                            <div
+                                              style={{
+                                                width: `${matchScore}%`,
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {worker.match_reason && (
+                                        <p className="match-reason">
+                                          {worker.match_reason}
+                                        </p>
+                                      )}
+
+                                      <ContractorReplies
+                                        requestId={request.id}
+                                        worker={worker}
+                                        toggleReply={toggleReply}
+                                        isReplyExpanded={isReplyExpanded}
+                                        formatReplyDate={formatReplyDate}
+                                        getReplyContent={getReplyContent}
+                                      />
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                )
-              }
-            )}
+
+                  <div className="maintenance-controls">
+                    <button
+                      className="property-action delete"
+                      onClick={() => deleteRequest(request)}
+                      title="Delete maintenance request"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
       {completedRequests.length > 0 && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>
-              Completed maintenance
-            </h3>
+            <h3>Completed maintenance</h3>
 
             <p>
               {completedRequests.length}{" "}
@@ -1143,79 +761,66 @@ export default function Maintenance() {
           </div>
 
           <div className="maintenance-list">
-            {completedRequests.map(
-              (request) => {
-                const property =
-                  getProperty(
-                    request.property_id
-                  )
+            {completedRequests.map((request) => {
+              const property = getProperty(request.property_id)
 
-                return (
-                  <div
-                    className="maintenance-card"
-                    key={request.id}
-                  >
-                    <div className="maintenance-card-main">
-                      <div className="maintenance-icon">
-                        <Wrench size={20} />
-                      </div>
-
-                      <div className="maintenance-content">
-                        <div className="maintenance-top">
-                          <h2>
-                            {request.category ||
-                              "Maintenance request"}
-                          </h2>
-
-                          <span className="priority-badge">
-                            Completed
-                          </span>
-                        </div>
-
-                        <p className="maintenance-description">
-                          {
-                            request.description
-                          }
-                        </p>
-
-                        <div className="maintenance-meta">
-                          <span>
-                            {property?.name ||
-                              "Unknown property"}
-                          </span>
-
-                          <span>
-                            {request.location ||
-                              property?.address ||
-                              "Location unavailable"}
-                          </span>
-
-                          <span>
-                            {new Date(
-                              request.created_at
-                            ).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
+              return (
+                <div
+                  className="maintenance-card"
+                  key={request.id}
+                >
+                  <div className="maintenance-card-main">
+                    <div className="maintenance-icon">
+                      <Wrench size={20} />
                     </div>
 
-                    <div className="maintenance-controls">
-                      <button
-                        className="property-action delete"
-                        onClick={() =>
-                          deleteRequest(
-                            request
-                          )
-                        }
-                        title="Delete maintenance request"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    <div className="maintenance-content">
+                      <div className="maintenance-top">
+                        <h2>
+                          {request.category || "Maintenance request"}
+                        </h2>
+
+                        <span className="priority-badge">
+                          Completed
+                        </span>
+                      </div>
+
+                      <p className="maintenance-description">
+                        {request.description}
+                      </p>
+
+                      <div className="maintenance-meta">
+                        <span>
+                          {property?.name || "Unknown property"}
+                        </span>
+
+                        <span>
+                          {request.location ||
+                            property?.address ||
+                            "Location unavailable"}
+                        </span>
+
+                        <span>
+                          {new Date(
+                            request.created_at
+                          ).toLocaleDateString()}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                )
-              }
-            )}
+
+                  <div className="maintenance-controls">
+                    <button
+                      className="property-action delete"
+                      onClick={() => deleteRequest(request)}
+                      title="Delete maintenance request"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -1224,10 +829,7 @@ export default function Maintenance() {
         <div
           className="modal-overlay"
           onMouseDown={(event) => {
-            if (
-              event.target ===
-              event.currentTarget
-            ) {
+            if (event.target === event.currentTarget) {
               closeModal()
             }
           }}
@@ -1235,13 +837,8 @@ export default function Maintenance() {
           <div className="modal">
             <div className="modal-header">
               <div>
-                <p className="eyebrow">
-                  Operations
-                </p>
-
-                <h2>
-                  Add maintenance request
-                </h2>
+                <p className="eyebrow">Operations</p>
+                <h2>Add maintenance request</h2>
               </div>
 
               <button
@@ -1263,29 +860,23 @@ export default function Maintenance() {
                   name="maintenance-property"
                   value={propertyId}
                   onChange={(event) =>
-                    setPropertyId(
-                      event.target.value
-                    )
+                    setPropertyId(event.target.value)
                   }
                   disabled={saving}
                 >
-                  <option value="">
-                    Select a property
-                  </option>
+                  <option value="">Select a property</option>
 
-                  {properties.map(
-                    (property) => (
-                      <option
-                        key={property.id}
-                        value={property.id}
-                      >
-                        {property.name}
-                        {property.address
-                          ? ` — ${property.address}`
-                          : ""}
-                      </option>
-                    )
-                  )}
+                  {properties.map((property) => (
+                    <option
+                      key={property.id}
+                      value={property.id}
+                    >
+                      {property.name}
+                      {property.address
+                        ? ` — ${property.address}`
+                        : ""}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -1297,9 +888,7 @@ export default function Maintenance() {
                   name="maintenance-description"
                   value={description}
                   onChange={(event) =>
-                    setDescription(
-                      event.target.value
-                    )
+                    setDescription(event.target.value)
                   }
                   placeholder="Describe the maintenance issue..."
                   disabled={saving}
@@ -1308,9 +897,7 @@ export default function Maintenance() {
               </label>
 
               {formError && (
-                <p className="form-error">
-                  {formError}
-                </p>
+                <p className="form-error">{formError}</p>
               )}
 
               <div className="modal-actions">
@@ -1328,9 +915,7 @@ export default function Maintenance() {
                   className="primary-button"
                   disabled={saving}
                 >
-                  {saving
-                    ? "Creating..."
-                    : "Create request"}
+                  {saving ? "Creating..." : "Create request"}
                 </button>
               </div>
             </form>
@@ -1341,10 +926,40 @@ export default function Maintenance() {
   )
 }
 
+function ContractorContact({ worker }) {
+  return (
+    <div className="contractor-contact-row">
+      {worker.phone && (
+        <span>
+          <Phone size={14} />
+          {worker.phone}
+        </span>
+      )}
+
+      {worker.email && (
+        <span>
+          <Mail size={14} />
+          {worker.email}
+        </span>
+      )}
+
+      {worker.website && (
+        <a
+          href={worker.website}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ExternalLink size={14} />
+          Website
+        </a>
+      )}
+    </div>
+  )
+}
+
 function ContractorReplies({
   requestId,
   worker,
-  expandedReplies,
   toggleReply,
   isReplyExpanded,
   formatReplyDate,
@@ -1352,8 +967,7 @@ function ContractorReplies({
 }) {
   const replies = Array.isArray(worker?.replies)
     ? worker.replies.filter(
-        (reply) =>
-          reply.direction === "inbound"
+        (reply) => reply.direction === "inbound"
       )
     : []
 
@@ -1365,16 +979,11 @@ function ContractorReplies({
     <div className="contractor-replies">
       <div className="contractor-replies-header">
         <div>
-          <div className="section-label">
-            Contractor replies
-          </div>
+          <div className="section-label">Contractor replies</div>
 
           <p>
             {replies.length}{" "}
-            {replies.length === 1
-              ? "reply"
-              : "replies"}{" "}
-            received
+            {replies.length === 1 ? "reply" : "replies"} received
           </p>
         </div>
 
@@ -1392,12 +1001,11 @@ function ContractorReplies({
             reply.message_id ??
             index
 
-          const expanded =
-            isReplyExpanded(
-              requestId,
-              worker.id,
-              replyId
-            )
+          const expanded = isReplyExpanded(
+            requestId,
+            worker.id,
+            replyId
+          )
 
           return (
             <div
@@ -1408,11 +1016,7 @@ function ContractorReplies({
                 type="button"
                 className="contractor-reply-toggle"
                 onClick={() =>
-                  toggleReply(
-                    requestId,
-                    worker.id,
-                    replyId
-                  )
+                  toggleReply(requestId, worker.id, replyId)
                 }
                 aria-expanded={expanded}
               >
@@ -1427,8 +1031,7 @@ function ContractorReplies({
                     </strong>
 
                     <span>
-                      {reply.subject ||
-                        "Reply received"}
+                      {reply.subject || "Reply received"}
 
                       {reply.received_at &&
                         ` · ${formatReplyDate(
@@ -1449,44 +1052,27 @@ function ContractorReplies({
                 <div className="contractor-reply-body">
                   {reply.subject && (
                     <div className="contractor-reply-subject">
-                      <strong>
-                        Subject
-                      </strong>
-
-                      <span>
-                        {reply.subject}
-                      </span>
+                      <strong>Subject</strong>
+                      <span>{reply.subject}</span>
                     </div>
                   )}
 
                   {reply.sender_email && (
                     <div className="contractor-reply-meta">
-                      <strong>
-                        From
-                      </strong>
-
-                      <span>
-                        {reply.sender_email}
-                      </span>
+                      <strong>From</strong>
+                      <span>{reply.sender_email}</span>
                     </div>
                   )}
 
                   {reply.recipient_email && (
                     <div className="contractor-reply-meta">
-                      <strong>
-                        To
-                      </strong>
-
-                      <span>
-                        {reply.recipient_email}
-                      </span>
+                      <strong>To</strong>
+                      <span>{reply.recipient_email}</span>
                     </div>
                   )}
 
                   <div className="contractor-reply-content">
-                    <pre>
-                      {getReplyContent(reply)}
-                    </pre>
+                    <pre>{getReplyContent(reply)}</pre>
                   </div>
                 </div>
               )}
