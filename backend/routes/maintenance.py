@@ -4,7 +4,7 @@ from html import escape
 
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from backend.services.ai_maintenance import (
@@ -79,6 +79,46 @@ def get_property_for_user(
     ).scalar_one_or_none()
 
 
+def set_external_worker_search_status(
+    maintenance_request_id,
+    status
+):
+    """
+    Persist the contractor-search status independently.
+
+    A separate committed update means the frontend can see
+    'running' while the long-running search is in progress.
+    """
+    try:
+        db.session.execute(
+            update(MaintenanceRequest)
+            .where(
+                MaintenanceRequest.id
+                == maintenance_request_id
+            )
+            .values(
+                external_worker_search_status=status
+            )
+            .execution_options(
+                synchronize_session=False
+            )
+        )
+
+        db.session.commit()
+
+    except SQLAlchemyError:
+        db.session.rollback()
+
+        print(
+            "[external search] failed to persist status: "
+            f"request={maintenance_request_id}, "
+            f"status={status!r}",
+            flush=True
+        )
+
+        raise
+
+
 def maintenance_request_response(
     maintenance_request
 ):
@@ -113,7 +153,6 @@ def maintenance_request_response(
     replies_by_candidate = {}
 
     for message in messages:
-
         if message.direction != "inbound":
             continue
 
@@ -145,16 +184,15 @@ def maintenance_request_response(
 
     return {
         "id": maintenance_request.id,
-
         "description": maintenance_request.description,
-
         "user_id": maintenance_request.user_id,
-
         "property_id": maintenance_request.property_id,
-
         "property_address": maintenance_request.location,
-
         "location": maintenance_request.location,
+
+        "external_worker_search_status": (
+            maintenance_request.external_worker_search_status
+        ),
 
         "external_workers": [
             {
@@ -198,9 +236,7 @@ def maintenance_request_response(
         ],
 
         "status": maintenance_request.status,
-
         "priority": maintenance_request.priority,
-
         "category": maintenance_request.category,
 
         "created_at": (
@@ -331,9 +367,7 @@ def create_maintenance_request():
 
     if property_id is None:
         return {
-            "error": (
-                "Property is required"
-            )
+            "error": "Property is required"
         }, 400
 
     try:
@@ -378,13 +412,10 @@ def create_maintenance_request():
         }, 422
 
     try:
-
         ai_result = analyse_maintenance_request(
             description
         )
-
     except ValueError as exc:
-
         return {
             "error": str(exc)
         }, 422
@@ -403,7 +434,6 @@ def create_maintenance_request():
     )
 
     try:
-
         db.session.flush()
 
         create_audit_log(
@@ -416,7 +446,6 @@ def create_maintenance_request():
         db.session.commit()
 
     except IntegrityError:
-
         db.session.rollback()
 
         return {
@@ -427,7 +456,6 @@ def create_maintenance_request():
         }, 409
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
@@ -519,6 +547,7 @@ def get_maintenance_request(
 
 # ============================================================
 # GEMINI CONTRACTOR DISCOVERY
+# + PERSISTENT SEARCH STATUS
 # + PROPERTY LOCATION
 # + LOCATION-AWARE RANKING
 # + AUTOMATIC EMAIL
@@ -580,11 +609,10 @@ def search_external_workers_for_request(
         }, 422
 
     # --------------------------------------------------------
-    # Determine required trades
+    # Determine required trades before claiming the search
     # --------------------------------------------------------
 
     try:
-
         ai_result = analyse_maintenance_request(
             maintenance_request.description
         )
@@ -595,7 +623,6 @@ def search_external_workers_for_request(
         )
 
     except ValueError as exc:
-
         return {
             "error": str(exc)
         }, 422
@@ -609,508 +636,594 @@ def search_external_workers_for_request(
         }, 422
 
     # --------------------------------------------------------
-    # Build contractor email
+    # Atomically claim the search in PostgreSQL
     # --------------------------------------------------------
 
-    (
-        email_subject,
-        email_html,
-        email_text_body
-    ) = build_external_worker_email(
-        maintenance_request,
-        location
-    )
-
-    # --------------------------------------------------------
-    # Existing candidates
-    # --------------------------------------------------------
-
-    existing_candidates = db.session.execute(
-        select(ExternalWorkerCandidate)
-        .where(
-            ExternalWorkerCandidate.maintenance_request_id
-            == maintenance_request.id
+    try:
+        claim_result = db.session.execute(
+            update(MaintenanceRequest)
+            .where(
+                MaintenanceRequest.id
+                == maintenance_request.id,
+                MaintenanceRequest.user_id == user.id,
+                MaintenanceRequest.external_worker_search_status
+                != "running"
+            )
+            .values(
+                external_worker_search_status="running"
+            )
+            .execution_options(
+                synchronize_session=False
+            )
         )
-    ).scalars().all()
 
-    existing_keys = {
+        db.session.commit()
+
+    except SQLAlchemyError:
+        db.session.rollback()
+
+        return {
+            "error": "Could not start contractor search"
+        }, 500
+
+    if claim_result.rowcount != 1:
+        current_status = db.session.execute(
+            select(
+                MaintenanceRequest.external_worker_search_status
+            ).where(
+                MaintenanceRequest.id
+                == maintenance_request.id,
+                MaintenanceRequest.user_id == user.id
+            )
+        ).scalar_one_or_none()
+
+        if current_status == "running":
+            return {
+                "error": (
+                    "A contractor search is already running"
+                ),
+                "external_worker_search_status": "running"
+            }, 409
+
+        return {
+            "error": "Could not start contractor search"
+        }, 500
+
+    # Keep the ORM object consistent with the committed update.
+    maintenance_request.external_worker_search_status = "running"
+
+    try:
+        # ----------------------------------------------------
+        # Build contractor email
+        # ----------------------------------------------------
+
         (
-            candidate.provider,
-            candidate.external_id
+            email_subject,
+            email_html,
+            email_text_body
+        ) = build_external_worker_email(
+            maintenance_request,
+            location
         )
-        for candidate in existing_candidates
-    }
 
-    # --------------------------------------------------------
-    # Gemini contractor discovery
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # Existing candidates
+        # ----------------------------------------------------
 
-    print(
-        "[external search] started: "
-        f"request={maintenance_request.id}, "
-        f"trades={required_trades}, "
-        f"location={location!r}, "
-        f"existing={len(existing_candidates)}",
-        flush=True
-    )
+        existing_candidates = db.session.execute(
+            select(ExternalWorkerCandidate)
+            .where(
+                ExternalWorkerCandidate.maintenance_request_id
+                == maintenance_request.id
+            )
+        ).scalars().all()
 
-    try:
+        existing_keys = {
+            (
+                candidate.provider,
+                candidate.external_id
+            )
+            for candidate in existing_candidates
+        }
 
-        candidates = find_contractors_with_gemini(
-            maintenance_request_id=maintenance_request.id,
-            required_trades=required_trades,
-            location=location,
-            email_subject=email_subject,
-            email_html=email_html,
-            email_text_body=email_text_body
-        )
+        # ----------------------------------------------------
+        # Gemini contractor discovery
+        # ----------------------------------------------------
 
         print(
-            "[external search] Gemini returned "
-            f"{len(candidates)} candidate(s)",
+            "[external search] started: "
+            f"request={maintenance_request.id}, "
+            f"trades={required_trades}, "
+            f"location={location!r}, "
+            f"existing={len(existing_candidates)}",
             flush=True
         )
-
-        for candidate in candidates:
-
-            print(
-                "[external search] candidate: "
-                f"name={candidate.name!r}, "
-                f"trade={candidate.trade!r}, "
-                f"email={candidate.email!r}, "
-                f"location={candidate.location!r}, "
-                f"source={candidate.source_url!r}",
-                flush=True
-            )
-
-    except ValueError as exc:
-
-        print(
-            "[external search] Gemini validation error: "
-            f"{exc!r}",
-            flush=True
-        )
-
-        return {
-            "error": str(exc)
-        }, 422
-
-    except Exception as exc:
-
-        print(
-            "[external search] Gemini discovery error: "
-            f"{exc!r}",
-            flush=True
-        )
-
-        return {
-            "error": (
-                "Gemini could not find external contractors"
-            )
-        }, 500
-
-    if not isinstance(candidates, list):
-
-        return {
-            "error": (
-                "Gemini contractor search returned "
-                "an invalid result"
-            )
-        }, 500
-
-    # --------------------------------------------------------
-    # Remove duplicates
-    # --------------------------------------------------------
-
-    new_candidates = []
-
-    for candidate in candidates:
-
-        if not isinstance(
-            candidate,
-            ExternalWorkerCandidate
-        ):
-            continue
-
-        candidate_key = (
-            candidate.provider,
-            candidate.external_id
-        )
-
-        if candidate_key in existing_keys:
-            continue
-
-        candidate.maintenance_request_id = (
-            maintenance_request.id
-        )
-
-        new_candidates.append(
-            candidate
-        )
-
-        existing_keys.add(
-            candidate_key
-        )
-
-    print(
-        "[external search] "
-        f"{len(new_candidates)} new candidate(s) remain "
-        "after duplicate filtering",
-        flush=True
-    )
-
-    # --------------------------------------------------------
-    # Save ALL genuinely new candidates
-    # --------------------------------------------------------
-
-    added_candidates = []
-
-    try:
-
-        for candidate in new_candidates:
-
-            db.session.add(
-                candidate
-            )
-
-            added_candidates.append(
-                candidate
-            )
-
-        db.session.flush()
-
-        create_audit_log(
-            user=user,
-            action=(
-                "maintenance_gemini_contractor_search"
-            ),
-            resource_type="maintenance_request",
-            resource_id=maintenance_request.id
-        )
-
-        db.session.commit()
-
-    except IntegrityError:
-
-        db.session.rollback()
-
-        return {
-            "error": (
-                "External contractor candidates "
-                "could not be created"
-            )
-        }, 409
-
-    except SQLAlchemyError:
-
-        db.session.rollback()
-
-        return {
-            "error": (
-                "External contractor candidates "
-                "could not be saved"
-            )
-        }, 500
-
-    # --------------------------------------------------------
-    # Persist outbound email records
-    # --------------------------------------------------------
-
-    sent = []
-    skipped = []
-    email_failed = []
-
-    for candidate in added_candidates:
-
-        email_status = getattr(
-            candidate,
-            "_email_status",
-            None
-        )
-
-        email_result = getattr(
-            candidate,
-            "_email_send_result",
-            None
-        )
-
-        email_error = getattr(
-            candidate,
-            "_email_error",
-            None
-        )
-
-        if email_status == "sent":
-
-            resend_message_id = None
-
-            if isinstance(
-                email_result,
-                dict
-            ):
-
-                resend_message_id = (
-                    email_result.get("id")
-                    or email_result.get("email_id")
-                )
-
-            else:
-
-                resend_message_id = getattr(
-                    email_result,
-                    "id",
-                    None
-                )
-
-            message = ExternalWorkerMessage(
-                maintenance_request_id=(
-                    maintenance_request.id
-                ),
-                candidate_id=candidate.id,
-                direction="outbound",
-                resend_message_id=resend_message_id,
-                sender_email=None,
-                recipient_email=candidate.email,
-                subject=(
-                    getattr(
-                        candidate,
-                        "_email_subject",
-                        email_subject
-                    )
-                ),
-                text_body=(
-                    getattr(
-                        candidate,
-                        "_email_text_body",
-                        email_text_body
-                    )
-                ),
-                html_body=(
-                    getattr(
-                        candidate,
-                        "_email_html",
-                        email_html
-                    )
-                ),
-                received_at=None
-            )
-
-            db.session.add(
-                message
-            )
-
-            sent.append({
-                "candidate_id": candidate.id,
-                "contractor": candidate.name,
-                "email": candidate.email,
-                "resend_message_id": resend_message_id
-            })
-
-        elif email_status == "skipped":
-
-            skipped.append({
-                "candidate_id": candidate.id,
-                "contractor": candidate.name,
-                "reason": (
-                    "No public email address found"
-                )
-            })
-
-        elif email_status == "failed":
-
-            email_failed.append({
-                "candidate_id": candidate.id,
-                "contractor": candidate.name,
-                "email": candidate.email,
-                "error": email_error
-            })
-
-    try:
-
-        if sent:
-
-            create_audit_log(
-                user=user,
-                action=(
-                    "maintenance_external_worker_emails_sent"
-                ),
-                resource_type="maintenance_request",
-                resource_id=maintenance_request.id
-            )
-
-        db.session.commit()
-
-    except SQLAlchemyError:
-
-        db.session.rollback()
-
-        print(
-            "[contractor email] "
-            "email message records could not be saved",
-            flush=True
-        )
-
-    # --------------------------------------------------------
-    # Build complete ranking pool
-    # --------------------------------------------------------
-
-    ranking_pool = (
-        list(existing_candidates)
-        + list(added_candidates)
-    )
-
-    ranking_error = None
-
-    if ranking_pool:
 
         try:
-
-            ranking_pool = rank_external_workers(
-                maintenance_description=(
-                    maintenance_request.description
-                ),
+            candidates = find_contractors_with_gemini(
+                maintenance_request_id=maintenance_request.id,
                 required_trades=required_trades,
-                candidates=ranking_pool,
-                target_location=location
+                location=location,
+                email_subject=email_subject,
+                email_html=email_html,
+                email_text_body=email_text_body
             )
 
-        except Exception as exc:
-
-            ranking_error = str(exc)
-
             print(
-                "[external search] contractor ranking error:",
-                repr(exc),
+                "[external search] Gemini returned "
+                f"{len(candidates)} candidate(s)",
                 flush=True
             )
 
-            for candidate in added_candidates:
-
-                candidate.match_score = None
-                candidate.match_reason = None
-
-    # --------------------------------------------------------
-    # Final top 20
-    # --------------------------------------------------------
-
-    final_candidates = ranking_pool[
-        :TARGET_EXTERNAL_CONTRACTORS
-    ]
-
-    final_new_candidates = [
-        candidate
-        for candidate in final_candidates
-        if candidate in added_candidates
-    ]
-
-    print(
-        "[contractor debug] "
-        f"new={len(new_candidates)}, "
-        f"saved={len(added_candidates)}, "
-        f"final={len(final_candidates)}, "
-        f"final_new={len(final_new_candidates)}",
-        flush=True
-    )
-
-    # --------------------------------------------------------
-    # Save ranking changes
-    # --------------------------------------------------------
-
-    try:
-
-        if ranking_pool:
-
-            create_audit_log(
-                user=user,
-                action=(
-                    "maintenance_gemini_contractor_ranking"
-                ),
-                resource_type="maintenance_request",
-                resource_id=maintenance_request.id
+        except ValueError as exc:
+            print(
+                "[external search] Gemini validation error: "
+                f"{exc!r}",
+                flush=True
             )
 
-        db.session.commit()
+            set_external_worker_search_status(
+                maintenance_request.id,
+                "failed"
+            )
 
-    except SQLAlchemyError:
+            return {
+                "error": str(exc),
+                "external_worker_search_status": "failed"
+            }, 422
 
-        db.session.rollback()
+        except Exception as exc:
+            print(
+                "[external search] Gemini discovery error: "
+                f"{exc!r}",
+                flush=True
+            )
+
+            set_external_worker_search_status(
+                maintenance_request.id,
+                "failed"
+            )
+
+            return {
+                "error": (
+                    "Gemini could not find external contractors"
+                ),
+                "external_worker_search_status": "failed"
+            }, 500
+
+        if not isinstance(candidates, list):
+            set_external_worker_search_status(
+                maintenance_request.id,
+                "failed"
+            )
+
+            return {
+                "error": (
+                    "Gemini contractor search returned "
+                    "an invalid result"
+                ),
+                "external_worker_search_status": "failed"
+            }, 500
+
+        # ----------------------------------------------------
+        # Remove duplicates
+        # ----------------------------------------------------
+
+        new_candidates = []
+
+        for candidate in candidates:
+            if not isinstance(
+                candidate,
+                ExternalWorkerCandidate
+            ):
+                continue
+
+            candidate_key = (
+                candidate.provider,
+                candidate.external_id
+            )
+
+            if candidate_key in existing_keys:
+                continue
+
+            candidate.maintenance_request_id = (
+                maintenance_request.id
+            )
+
+            new_candidates.append(
+                candidate
+            )
+
+            existing_keys.add(
+                candidate_key
+            )
 
         print(
             "[external search] "
-            "contractor ranking changes could not be saved",
+            f"{len(new_candidates)} new candidate(s) remain "
+            "after duplicate filtering",
             flush=True
         )
 
-    # --------------------------------------------------------
-    # Return discovery + ranking + email results
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # Save genuinely new candidates
+        # ----------------------------------------------------
 
-    response = {
-        "message": (
-            "Gemini discovered and ranked "
-            "external contractors"
-        ),
+        added_candidates = []
 
-        "required_trades": required_trades,
+        try:
+            for candidate in new_candidates:
+                db.session.add(
+                    candidate
+                )
 
-        "location": location,
+                added_candidates.append(
+                    candidate
+                )
 
-        "discovered": len(
-            added_candidates
-        ),
+            db.session.flush()
 
-        "total_candidates": len(
-            final_candidates
-        ),
-
-        "target_candidates": TARGET_EXTERNAL_CONTRACTORS,
-
-        "ranking": (
-            "completed"
-            if ranking_error is None
-            else "failed"
-        ),
-
-        "emails": {
-            "sent": sent,
-            "skipped": skipped,
-            "failed": email_failed
-        },
-
-        "maintenance_request": (
-            maintenance_request_response(
-                maintenance_request
+            create_audit_log(
+                user=user,
+                action=(
+                    "maintenance_gemini_contractor_search"
+                ),
+                resource_type="maintenance_request",
+                resource_id=maintenance_request.id
             )
+
+            db.session.commit()
+
+        except IntegrityError:
+            db.session.rollback()
+
+            set_external_worker_search_status(
+                maintenance_request.id,
+                "failed"
+            )
+
+            return {
+                "error": (
+                    "External contractor candidates "
+                    "could not be created"
+                ),
+                "external_worker_search_status": "failed"
+            }, 409
+
+        except SQLAlchemyError:
+            db.session.rollback()
+
+            set_external_worker_search_status(
+                maintenance_request.id,
+                "failed"
+            )
+
+            return {
+                "error": (
+                    "External contractor candidates "
+                    "could not be saved"
+                ),
+                "external_worker_search_status": "failed"
+            }, 500
+
+        # ----------------------------------------------------
+        # Persist outbound email records
+        # ----------------------------------------------------
+
+        sent = []
+        skipped = []
+        email_failed = []
+
+        for candidate in added_candidates:
+            email_status = getattr(
+                candidate,
+                "_email_status",
+                None
+            )
+
+            email_result = getattr(
+                candidate,
+                "_email_send_result",
+                None
+            )
+
+            email_error = getattr(
+                candidate,
+                "_email_error",
+                None
+            )
+
+            if email_status == "sent":
+                resend_message_id = None
+
+                if isinstance(
+                    email_result,
+                    dict
+                ):
+                    resend_message_id = (
+                        email_result.get("id")
+                        or email_result.get("email_id")
+                    )
+                else:
+                    resend_message_id = getattr(
+                        email_result,
+                        "id",
+                        None
+                    )
+
+                message = ExternalWorkerMessage(
+                    maintenance_request_id=(
+                        maintenance_request.id
+                    ),
+                    candidate_id=candidate.id,
+                    direction="outbound",
+                    resend_message_id=resend_message_id,
+                    sender_email=None,
+                    recipient_email=candidate.email,
+                    subject=(
+                        getattr(
+                            candidate,
+                            "_email_subject",
+                            email_subject
+                        )
+                    ),
+                    text_body=(
+                        getattr(
+                            candidate,
+                            "_email_text_body",
+                            email_text_body
+                        )
+                    ),
+                    html_body=(
+                        getattr(
+                            candidate,
+                            "_email_html",
+                            email_html
+                        )
+                    ),
+                    received_at=None
+                )
+
+                db.session.add(
+                    message
+                )
+
+                sent.append({
+                    "candidate_id": candidate.id,
+                    "contractor": candidate.name,
+                    "email": candidate.email,
+                    "resend_message_id": resend_message_id
+                })
+
+            elif email_status == "skipped":
+                skipped.append({
+                    "candidate_id": candidate.id,
+                    "contractor": candidate.name,
+                    "reason": (
+                        "No public email address found"
+                    )
+                })
+
+            elif email_status == "failed":
+                email_failed.append({
+                    "candidate_id": candidate.id,
+                    "contractor": candidate.name,
+                    "email": candidate.email,
+                    "error": email_error
+                })
+
+        try:
+            if sent:
+                create_audit_log(
+                    user=user,
+                    action=(
+                        "maintenance_external_worker_emails_sent"
+                    ),
+                    resource_type="maintenance_request",
+                    resource_id=maintenance_request.id
+                )
+
+            db.session.commit()
+
+        except SQLAlchemyError:
+            db.session.rollback()
+
+            print(
+                "[contractor email] "
+                "email message records could not be saved",
+                flush=True
+            )
+
+        # ----------------------------------------------------
+        # Build complete ranking pool
+        # ----------------------------------------------------
+
+        ranking_pool = (
+            list(existing_candidates)
+            + list(added_candidates)
         )
-    }
 
-    if ranking_error:
+        ranking_error = None
 
-        response["ranking_warning"] = (
-            "Contractors were discovered successfully "
-            "but contractor ranking failed"
+        if ranking_pool:
+            try:
+                ranking_pool = rank_external_workers(
+                    maintenance_description=(
+                        maintenance_request.description
+                    ),
+                    required_trades=required_trades,
+                    candidates=ranking_pool,
+                    target_location=location
+                )
+
+            except Exception as exc:
+                ranking_error = str(exc)
+
+                print(
+                    "[external search] contractor ranking error:",
+                    repr(exc),
+                    flush=True
+                )
+
+                for candidate in added_candidates:
+                    candidate.match_score = None
+                    candidate.match_reason = None
+
+        # ----------------------------------------------------
+        # Final top 20
+        # ----------------------------------------------------
+
+        final_candidates = ranking_pool[
+            :TARGET_EXTERNAL_CONTRACTORS
+        ]
+
+        final_new_candidates = [
+            candidate
+            for candidate in final_candidates
+            if candidate in added_candidates
+        ]
+
+        print(
+            "[contractor debug] "
+            f"new={len(new_candidates)}, "
+            f"saved={len(added_candidates)}, "
+            f"final={len(final_candidates)}, "
+            f"final_new={len(final_new_candidates)}",
+            flush=True
         )
 
-    if len(final_candidates) < TARGET_EXTERNAL_CONTRACTORS:
+        # ----------------------------------------------------
+        # Save ranking changes
+        # ----------------------------------------------------
 
-        response["contractor_count_warning"] = (
-            "Fewer than 20 qualifying contractors "
-            "were available after geographic expansion "
-            "and public-email filtering"
+        try:
+            if ranking_pool:
+                create_audit_log(
+                    user=user,
+                    action=(
+                        "maintenance_gemini_contractor_ranking"
+                    ),
+                    resource_type="maintenance_request",
+                    resource_id=maintenance_request.id
+                )
+
+            db.session.commit()
+
+        except SQLAlchemyError:
+            db.session.rollback()
+
+            print(
+                "[external search] "
+                "contractor ranking changes could not be saved",
+                flush=True
+            )
+
+        # ----------------------------------------------------
+        # Build response
+        # ----------------------------------------------------
+
+        response = {
+            "message": (
+                "Gemini discovered and ranked "
+                "external contractors"
+            ),
+
+            "required_trades": required_trades,
+
+            "location": location,
+
+            "discovered": len(
+                added_candidates
+            ),
+
+            "total_candidates": len(
+                final_candidates
+            ),
+
+            "target_candidates": TARGET_EXTERNAL_CONTRACTORS,
+
+            "ranking": (
+                "completed"
+                if ranking_error is None
+                else "failed"
+            ),
+
+            "emails": {
+                "sent": sent,
+                "skipped": skipped,
+                "failed": email_failed
+            },
+
+            "maintenance_request": (
+                maintenance_request_response(
+                    maintenance_request
+                )
+            )
+        }
+
+        if ranking_error:
+            response["ranking_warning"] = (
+                "Contractors were discovered successfully "
+                "but contractor ranking failed"
+            )
+
+        if len(final_candidates) < TARGET_EXTERNAL_CONTRACTORS:
+            response["contractor_count_warning"] = (
+                "Fewer than 20 qualifying contractors "
+                "were available after geographic expansion "
+                "and public-email filtering"
+            )
+
+        print(
+            "[external search] complete: "
+            f"discovered={response['discovered']}, "
+            f"final_candidates={response['total_candidates']}, "
+            f"ranking={response['ranking']}, "
+            f"emails_sent={len(sent)}, "
+            f"emails_skipped={len(skipped)}, "
+            f"emails_failed={len(email_failed)}",
+            flush=True
         )
 
-    print(
-        "[external search] complete: "
-        f"discovered={response['discovered']}, "
-        f"final_candidates={response['total_candidates']}, "
-        f"ranking={response['ranking']}, "
-        f"emails_sent={len(sent)}, "
-        f"emails_skipped={len(skipped)}, "
-        f"emails_failed={len(email_failed)}",
-        flush=True
-    )
+        # ----------------------------------------------------
+        # Persist completed status
+        # ----------------------------------------------------
 
-    return response, 200
+        set_external_worker_search_status(
+            maintenance_request.id,
+            "completed"
+        )
+
+        response["maintenance_request"][
+            "external_worker_search_status"
+        ] = "completed"
+
+        return response, 200
+
+    except Exception as exc:
+        # Catch unexpected errors after the status was claimed,
+        # so the request doesn't normally remain stuck running.
+        print(
+            "[external search] unexpected route error: "
+            f"request={maintenance_request.id}, "
+            f"error={exc!r}",
+            flush=True
+        )
+
+        db.session.rollback()
+
+        try:
+            set_external_worker_search_status(
+                maintenance_request.id,
+                "failed"
+            )
+        except SQLAlchemyError:
+            pass
+
+        return {
+            "error": "External contractor search failed",
+            "external_worker_search_status": "failed"
+        }, 500
 
 
 # ============================================================
@@ -1167,9 +1280,7 @@ def select_external_worker(
         }, 404
 
     try:
-
         if candidate.is_selected:
-
             candidate.is_selected = False
             candidate.selected_at = None
 
@@ -1178,7 +1289,6 @@ def select_external_worker(
             )
 
         else:
-
             candidate.is_selected = True
             candidate.selected_at = (
                 datetime.now(timezone.utc)
@@ -1198,7 +1308,6 @@ def select_external_worker(
         db.session.commit()
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
@@ -1285,7 +1394,6 @@ def update_maintenance_request(
     category = data.get("category")
 
     if category is not None:
-
         if not isinstance(category, str):
             return {
                 "error": "Category must be a string"
@@ -1311,7 +1419,6 @@ def update_maintenance_request(
         maintenance_request.category = category
 
     try:
-
         db.session.flush()
 
         create_audit_log(
@@ -1326,7 +1433,6 @@ def update_maintenance_request(
         db.session.commit()
 
     except IntegrityError:
-
         db.session.rollback()
 
         return {
@@ -1338,7 +1444,6 @@ def update_maintenance_request(
         }, 409
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
@@ -1388,7 +1493,6 @@ def delete_maintenance_request(
         }, 404
 
     try:
-
         db.session.execute(
             delete(ExternalWorkerMessage).where(
                 ExternalWorkerMessage
@@ -1423,7 +1527,6 @@ def delete_maintenance_request(
         db.session.commit()
 
     except IntegrityError:
-
         db.session.rollback()
 
         return {
@@ -1434,7 +1537,6 @@ def delete_maintenance_request(
         }, 409
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
