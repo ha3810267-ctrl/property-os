@@ -18,6 +18,8 @@ import {
 } from "lucide-react"
 import { apiRequest } from "../services/api"
 
+const CONTRACTOR_SEARCH_KEY = "contractorSearchRequest"
+
 export default function Maintenance() {
   const [requests, setRequests] = useState([])
   const [properties, setProperties] = useState([])
@@ -33,7 +35,10 @@ export default function Maintenance() {
   const [formError, setFormError] = useState("")
 
   const [searchingExternalWorker, setSearchingExternalWorker] =
-    useState(null)
+    useState(() => {
+      const saved = sessionStorage.getItem(CONTRACTOR_SEARCH_KEY)
+      return saved ? Number(saved) : null
+    })
 
   const [expandedReplies, setExpandedReplies] = useState({})
 
@@ -42,22 +47,17 @@ export default function Maintenance() {
       setLoading(true)
       setError("")
 
-      const [maintenanceData, propertiesData] =
-        await Promise.all([
-          apiRequest("/maintenance-requests"),
-          apiRequest("/properties"),
-        ])
+      const [maintenanceData, propertiesData] = await Promise.all([
+        apiRequest("/maintenance-requests"),
+        apiRequest("/properties"),
+      ])
 
       setRequests(
-        Array.isArray(maintenanceData)
-          ? maintenanceData
-          : []
+        Array.isArray(maintenanceData) ? maintenanceData : []
       )
 
       setProperties(
-        Array.isArray(propertiesData)
-          ? propertiesData
-          : []
+        Array.isArray(propertiesData) ? propertiesData : []
       )
     } catch (error) {
       console.error(error)
@@ -166,10 +166,7 @@ export default function Maintenance() {
         }
       )
 
-      setRequests((current) => [
-        newRequest,
-        ...current,
-      ])
+      setRequests((current) => [newRequest, ...current])
 
       setShowModal(false)
       setDescription("")
@@ -214,8 +211,17 @@ export default function Maintenance() {
   }
 
   async function searchExternalWorkers(requestId) {
+    // Only allow one contractor search at a time in this tab.
+    if (searchingExternalWorker !== null) return
+
+    setSearchingExternalWorker(requestId)
+
+    sessionStorage.setItem(
+      CONTRACTOR_SEARCH_KEY,
+      String(requestId)
+    )
+
     try {
-      setSearchingExternalWorker(requestId)
       setError("")
 
       const result = await apiRequest(
@@ -235,18 +241,20 @@ export default function Maintenance() {
 
       setRequests((current) =>
         current.map((request) =>
-          request.id === requestId
-            ? updated
-            : request
+          request.id === requestId ? updated : request
         )
       )
+
+      // Clear the saved search only after a successful response.
+      sessionStorage.removeItem(CONTRACTOR_SEARCH_KEY)
+      setSearchingExternalWorker(null)
     } catch (error) {
       console.error(error)
       setError(
         error.message || "Could not search for external workers"
       )
-    } finally {
-      setSearchingExternalWorker(null)
+
+      // Keep the button disabled: the backend may still be working.
     }
   }
 
@@ -470,7 +478,15 @@ export default function Maintenance() {
                             onClick={() =>
                               searchExternalWorkers(request.id)
                             }
-                            disabled={isSearchingExternal}
+                            disabled={
+                              searchingExternalWorker !== null
+                            }
+                            title={
+                              searchingExternalWorker !== null &&
+                              !isSearchingExternal
+                                ? "Another contractor search is running"
+                                : undefined
+                            }
                           >
                             <ExternalLink size={16} />
 
@@ -574,7 +590,9 @@ export default function Maintenance() {
                                   )}
                                 </div>
 
-                                <ContractorContact worker={selectedExternalWorker} />
+                                <ContractorContact
+                                  worker={selectedExternalWorker}
+                                />
 
                                 {selectedExternalWorker.match_score != null && (
                                   <div className="contractor-match">
