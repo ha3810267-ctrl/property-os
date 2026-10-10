@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Wrench,
   Plus,
@@ -19,6 +19,7 @@ import {
 import { apiRequest } from "../services/api"
 
 const CONTRACTOR_SEARCH_KEY = "contractorSearchRequest"
+const SEARCH_POLL_INTERVAL = 2500
 
 export default function Maintenance() {
   const [requests, setRequests] = useState([])
@@ -42,6 +43,40 @@ export default function Maintenance() {
 
   const [expandedReplies, setExpandedReplies] = useState({})
 
+  const activeSearchRef = useRef(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  function syncSearchState(maintenanceRequests) {
+    const runningRequest = maintenanceRequests.find(
+      (item) =>
+        item.external_worker_search_status === "running"
+    )
+
+    if (runningRequest) {
+      activeSearchRef.current = runningRequest.id
+
+      sessionStorage.setItem(
+        CONTRACTOR_SEARCH_KEY,
+        String(runningRequest.id)
+      )
+
+      setSearchingExternalWorker(runningRequest.id)
+      return
+    }
+
+    activeSearchRef.current = null
+    sessionStorage.removeItem(CONTRACTOR_SEARCH_KEY)
+    setSearchingExternalWorker(null)
+  }
+
   async function loadData() {
     try {
       setLoading(true)
@@ -52,24 +87,109 @@ export default function Maintenance() {
         apiRequest("/properties"),
       ])
 
-      setRequests(
-        Array.isArray(maintenanceData) ? maintenanceData : []
-      )
+      if (!mountedRef.current) return
+
+      const loadedRequests = Array.isArray(maintenanceData)
+        ? maintenanceData
+        : []
+
+      setRequests(loadedRequests)
 
       setProperties(
         Array.isArray(propertiesData) ? propertiesData : []
       )
+
+      syncSearchState(loadedRequests)
     } catch (error) {
       console.error(error)
-      setError(error.message || "Unable to load maintenance")
+
+      if (mountedRef.current) {
+        setError(error.message || "Unable to load maintenance")
+      }
     } finally {
-      setLoading(false)
+      if (mountedRef.current) {
+        setLoading(false)
+      }
     }
   }
 
   useEffect(() => {
     loadData()
   }, [])
+
+  // Poll the backend while any contractor search is running.
+  // PostgreSQL status survives navigation and component remounts.
+  useEffect(() => {
+    if (searchingExternalWorker === null) return
+
+    let cancelled = false
+    let timeoutId
+
+    async function pollSearchStatus() {
+      try {
+        const maintenanceData = await apiRequest(
+          "/maintenance-requests"
+        )
+
+        if (cancelled || !mountedRef.current) return
+
+        const loadedRequests = Array.isArray(maintenanceData)
+          ? maintenanceData
+          : []
+
+        setRequests(loadedRequests)
+
+        const activeRequest = loadedRequests.find(
+          (item) =>
+            item.id === searchingExternalWorker
+        )
+
+        if (
+          activeRequest?.external_worker_search_status === "running"
+        ) {
+          timeoutId = setTimeout(
+            pollSearchStatus,
+            SEARCH_POLL_INTERVAL
+          )
+          return
+        }
+
+        // The backend no longer reports a running search.
+        syncSearchState(loadedRequests)
+
+        if (
+          activeRequest?.external_worker_search_status === "failed"
+        ) {
+          setError(
+            "Contractor search failed. You can try again."
+          )
+        }
+      } catch (error) {
+        console.error(
+          "Could not refresh contractor search status:",
+          error
+        )
+
+        // Keep the button disabled when status cannot be checked.
+        if (!cancelled) {
+          timeoutId = setTimeout(
+            pollSearchStatus,
+            SEARCH_POLL_INTERVAL
+          )
+        }
+      }
+    }
+
+    timeoutId = setTimeout(
+      pollSearchStatus,
+      SEARCH_POLL_INTERVAL
+    )
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
+  }, [searchingExternalWorker])
 
   function toggleReply(requestId, candidateId, replyId) {
     const key = `${requestId}-${candidateId}-${replyId}`
@@ -174,6 +294,7 @@ export default function Maintenance() {
       setFormError("")
     } catch (error) {
       console.error(error)
+
       setFormError(
         error.message || "Could not create maintenance request"
       )
@@ -204,6 +325,7 @@ export default function Maintenance() {
       )
     } catch (error) {
       console.error(error)
+
       setError(
         error.message || "Could not delete maintenance request"
       )
@@ -211,9 +333,29 @@ export default function Maintenance() {
   }
 
   async function searchExternalWorkers(requestId) {
-    // Only allow one contractor search at a time in this tab.
-    if (searchingExternalWorker !== null) return
+    // Prevent duplicate searches in this mounted page.
+    if (activeSearchRef.current !== null) return
 
+    // Also respect the status returned by PostgreSQL.
+    const requestToSearch = requests.find(
+      (item) => item.id === requestId
+    )
+
+    if (
+      requestToSearch?.external_worker_search_status === "running"
+    ) {
+      activeSearchRef.current = requestId
+      setSearchingExternalWorker(requestId)
+
+      sessionStorage.setItem(
+        CONTRACTOR_SEARCH_KEY,
+        String(requestId)
+      )
+
+      return
+    }
+
+    activeSearchRef.current = requestId
     setSearchingExternalWorker(requestId)
 
     sessionStorage.setItem(
@@ -221,9 +363,21 @@ export default function Maintenance() {
       String(requestId)
     )
 
-    try {
-      setError("")
+    setError("")
 
+    // Refresh immediately so the UI reflects the running state.
+    setRequests((current) =>
+      current.map((item) =>
+        item.id === requestId
+          ? {
+              ...item,
+              external_worker_search_status: "running",
+            }
+          : item
+      )
+    )
+
+    try {
       const result = await apiRequest(
         `/maintenance-requests/${requestId}/external-workers/search`,
         {
@@ -239,22 +393,28 @@ export default function Maintenance() {
         )
       }
 
+      if (!mountedRef.current) return
+
       setRequests((current) =>
-        current.map((request) =>
-          request.id === requestId ? updated : request
+        current.map((item) =>
+          item.id === requestId ? updated : item
         )
       )
 
-      // Clear the saved search only after a successful response.
+      activeSearchRef.current = null
       sessionStorage.removeItem(CONTRACTOR_SEARCH_KEY)
       setSearchingExternalWorker(null)
     } catch (error) {
       console.error(error)
+
+      if (!mountedRef.current) return
+
       setError(
         error.message || "Could not search for external workers"
       )
 
-      // Keep the button disabled: the backend may still be working.
+      // Do not unlock the button based on a failed HTTP response.
+      // The backend might still be running; polling will verify it.
     }
   }
 
@@ -347,14 +507,14 @@ export default function Maintenance() {
       {!loading && error && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>Unable to load maintenance</h3>
+            <h3>Maintenance notice</h3>
             <p>{error}</p>
 
             <button
               className="secondary-button"
               onClick={loadData}
             >
-              Try again
+              Refresh
             </button>
           </div>
         </div>
@@ -412,6 +572,7 @@ export default function Maintenance() {
               )
 
               const isSearchingExternal =
+                request.external_worker_search_status === "running" ||
                 searchingExternalWorker === request.id
 
               return (
@@ -479,13 +640,16 @@ export default function Maintenance() {
                               searchExternalWorkers(request.id)
                             }
                             disabled={
-                              searchingExternalWorker !== null
+                              searchingExternalWorker !== null ||
+                              request.external_worker_search_status ===
+                                "running"
                             }
                             title={
-                              searchingExternalWorker !== null &&
-                              !isSearchingExternal
-                                ? "Another contractor search is running"
-                                : undefined
+                              isSearchingExternal
+                                ? "Contractor search is running"
+                                : searchingExternalWorker !== null
+                                  ? "Another contractor search is running"
+                                  : undefined
                             }
                           >
                             <ExternalLink size={16} />
