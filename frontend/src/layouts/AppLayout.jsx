@@ -37,17 +37,17 @@ export default function AppLayout() {
   }
 
   return (
-    <div className={`app-shell ${mobileMenuOpen ? "mobile-menu-open" : ""}`}>
+    <div className="app-shell">
       {mobileMenuOpen && (
         <button
           type="button"
           className="mobile-sidebar-backdrop"
-          aria-label="Close navigation menu"
+          aria-label="Close navigation"
           onClick={closeMobileMenu}
         />
       )}
 
-      <aside className="sidebar">
+      <aside className={`sidebar ${mobileMenuOpen ? "sidebar-open" : ""}`}>
         <div className="brand">
           <div className="brand-mark">P</div>
           <span>PropertyOS</span>
@@ -55,10 +55,10 @@ export default function AppLayout() {
           <button
             type="button"
             className="mobile-menu-close"
-            aria-label="Close navigation menu"
+            aria-label="Close menu"
             onClick={closeMobileMenu}
           >
-            <X size={21} />
+            <X size={20} />
           </button>
         </div>
 
@@ -106,13 +106,12 @@ export default function AppLayout() {
           <button
             type="button"
             className="mobile-menu-toggle"
-            aria-label="Open navigation menu"
+            aria-label="Open navigation"
             aria-expanded={mobileMenuOpen}
             onClick={() => setMobileMenuOpen(true)}
           >
             <Menu size={22} />
           </button>
-
           <div className="mobile-brand">
             <div className="brand-mark">P</div>
             <span>PropertyOS</span>
