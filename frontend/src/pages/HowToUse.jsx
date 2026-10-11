@@ -3,10 +3,12 @@ import {
   MapPin,
   ClipboardList,
   Search,
-  Star,
+  RefreshCw,
   Mail,
+  Clock,
+  ShieldCheck,
   ArrowRight,
-  Lightbulb,
+  CircleHelp,
 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
@@ -14,43 +16,37 @@ const steps = [
   {
     number: "01",
     icon: MapPin,
-    title: "Add your locations",
+    title: "Add a location",
     description:
-      "Save the locations where you need services. You can select a saved location when creating a request.",
-    action: "Manage locations",
-    path: "/locations",
+      "Go to Locations and add the location where you need the service. You will use this location when creating your request.",
   },
   {
     number: "02",
     icon: ClipboardList,
-    title: "Describe what you need",
+    title: "Create a service request",
     description:
-      "Create a service request and explain the job. Include useful details so professionals can understand what you need.",
-    action: "Create a request",
-    path: "/requests",
+      "Go to Service Requests and create a request. Describe exactly what you need, including any useful details that will help a professional understand the job.",
   },
   {
     number: "03",
     icon: Search,
-    title: "Find professionals",
+    title: "Find providers",
     description:
-      "Open your request and start a provider search. Matchly looks for potentially suitable professionals based on your request.",
-    action: "View requests",
-    path: "/requests",
+      "Open your request and click Find Providers. The button may become temporarily unavailable while Matchly searches for suitable professionals.",
   },
   {
     number: "04",
-    icon: Star,
-    title: "Review your matches",
+    icon: RefreshCw,
+    title: "Wait, then refresh",
     description:
-      "Compare suggested professionals and the details available. Check their suitability before deciding who to contact.",
+      "Wait until the Find Providers button becomes available (ungreyed) again. Then refresh the page to load and display the search results.",
   },
   {
     number: "05",
     icon: Mail,
-    title: "Check replies",
+    title: "Wait for a reply",
     description:
-      "Review email responses associated with your request when available, then decide how you want to proceed.",
+      "Providers may respond by email. You can see replies on your Dashboard and under the relevant provider inside your service request. Check both places for updates.",
   },
 ]
 
@@ -64,21 +60,22 @@ export default function HowToUse() {
           <p className="page-eyebrow">MATCHLY GUIDE</p>
           <h1>How to use Matchly</h1>
           <p className="page-description">
-            Find your way around Matchly, from creating a request
-            to reviewing potential service providers.
+            Follow these steps to find a suitable professional
+            for the service you need.
           </p>
         </div>
       </div>
 
       <section className="how-to-intro">
         <div className="how-to-intro-icon">
-          <Lightbulb size={24} />
+          <CircleHelp size={24} />
         </div>
         <div>
-          <h2>Getting started</h2>
+          <h2>Simple from start to finish</h2>
           <p>
-            Follow these five steps to organise your requests
-            and discover professionals who may be able to help.
+            Add your location, describe the job, find providers
+            and keep track of replies. If nobody responds, we
+            have a backup plan to help you.
           </p>
         </div>
       </section>
@@ -101,13 +98,35 @@ export default function HowToUse() {
                 <h2>{step.title}</h2>
                 <p>{step.description}</p>
 
-                {step.action && (
+                {step.number === "01" && (
                   <button
                     type="button"
                     className="how-to-action"
-                    onClick={() => navigate(step.path)}
+                    onClick={() => navigate("/locations")}
                   >
-                    {step.action}
+                    Go to Locations
+                    <ArrowRight size={16} />
+                  </button>
+                )}
+
+                {step.number === "02" && (
+                  <button
+                    type="button"
+                    className="how-to-action"
+                    onClick={() => navigate("/requests")}
+                  >
+                    Create a request
+                    <ArrowRight size={16} />
+                  </button>
+                )}
+
+                {step.number === "05" && (
+                  <button
+                    type="button"
+                    className="how-to-action"
+                    onClick={() => navigate("/")}
+                  >
+                    View Dashboard
                     <ArrowRight size={16} />
                   </button>
                 )}
@@ -117,19 +136,93 @@ export default function HowToUse() {
         })}
       </section>
 
-      <section className="how-to-footer">
-        <h2>Ready to get started?</h2>
+      <section className="how-to-support">
+        <div className="how-to-support-heading">
+          <div className="how-to-support-icon">
+            <Clock size={24} />
+          </div>
+          <div>
+            <p className="page-eyebrow">OUR SUPPORT PROMISE</p>
+            <h2>No replies after two business days?</h2>
+          </div>
+        </div>
+
         <p>
-          Head to your service requests to create a request
-          or continue working on an existing one.
+          If you have not received any provider replies within
+          two business days, contact us and we will step in to
+          help you find a professional.
         </p>
+
+        <div className="how-to-support-steps">
+          <div className="how-to-support-step">
+            <span>1</span>
+            <div>
+              <h3>Contact Matchly</h3>
+              <p>
+                Open Contact Us and tell us that you have not
+                received any provider replies within two business
+                days.
+              </p>
+            </div>
+          </div>
+
+          <div className="how-to-support-step">
+            <span>2</span>
+            <div>
+              <h3>Include your account details</h3>
+              <p>
+                Tell us the name you signed up with and the email
+                address you used to register. This helps us
+                identify your account.
+              </p>
+            </div>
+          </div>
+
+          <div className="how-to-support-step">
+            <span>3</span>
+            <div>
+              <h3>We find a provider for you</h3>
+              <p>
+                We will manually search for a suitable provider
+                within the next business day after you contact us.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="how-to-refund">
+          <ShieldCheck size={22} />
+          <div>
+            <h3>Your money is protected</h3>
+            <p>
+              In the highly unlikely event that we still cannot
+              find you a provider, we will give you a full refund.
+            </p>
+          </div>
+        </div>
 
         <button
           type="button"
           className="primary-button"
-          onClick={() => navigate("/requests")}
+          onClick={() => navigate("/contact")}
         >
-          Go to service requests
+          Contact Us
+          <ArrowRight size={16} />
+        </button>
+      </section>
+
+      <section className="how-to-footer">
+        <h2>Ready to find a provider?</h2>
+        <p>
+          Start by adding your location, then create your first
+          service request.
+        </p>
+        <button
+          type="button"
+          className="primary-button"
+          onClick={() => navigate("/locations")}
+        >
+          Get started
           <ArrowRight size={16} />
         </button>
       </section>
