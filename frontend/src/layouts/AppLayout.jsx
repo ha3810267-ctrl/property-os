@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   GitCompareArrows,
+  BookOpen,
 } from "lucide-react"
 
 export default function AppLayout() {
@@ -80,6 +81,11 @@ export default function AppLayout() {
           <NavLink to="/locations" onClick={closeMobileMenu}>
             <MapPin size={18} />
             <span>Locations</span>
+          </NavLink>
+
+          <NavLink to="/how-to-use" onClick={closeMobileMenu}>
+            <BookOpen size={18} />
+            <span>How to Use</span>
           </NavLink>
 
           <NavLink to="/contact" onClick={closeMobileMenu}>

@@ -1,3 +1,4 @@
+
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 
 import AppLayout from "./layouts/AppLayout"
@@ -10,6 +11,7 @@ import Account from "./pages/Account"
 import ResetPassword from "./pages/ResetPassword"
 import ForgotPassword from "./pages/ForgotPassword"
 import Contact from "./pages/Contact"
+import HowToUse from "./pages/HowToUse"
 
 function getUserFromToken() {
   const token = localStorage.getItem("access_token")
@@ -63,6 +65,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/locations" element={<Properties />} />
           <Route path="/requests" element={<Maintenance />} />
+          <Route path="/how-to-use" element={<HowToUse />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/account" element={<Account />} />
 
