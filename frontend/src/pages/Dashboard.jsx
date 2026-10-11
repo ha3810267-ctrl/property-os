@@ -94,7 +94,7 @@ export default function Dashboard() {
                   worker.name ||
                   worker.business_name ||
                   worker.company_name ||
-                  "Contractor",
+                  "Service provider",
               })
             })
           })
@@ -186,7 +186,7 @@ export default function Dashboard() {
       .trim()
 
     if (!cleaned) {
-      return "Contractor sent a reply."
+      return "Service provider sent a reply."
     }
 
     return cleaned.length > 180
@@ -208,11 +208,7 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard-page">
-
-      {/* HEADER */}
-
       <div className="page-header">
-
         <div>
           <p className="eyebrow">
             Overview
@@ -223,32 +219,25 @@ export default function Dashboard() {
           </h1>
 
           <p className="page-subtitle">
-            Keep track of your properties, maintenance
-            requests and contractor responses.
+            Find services, manage requests and keep track
+            of responses from service providers.
           </p>
         </div>
 
         <button
           className="primary-button"
-          onClick={
-            createMaintenanceRequest
-          }
+          onClick={createMaintenanceRequest}
         >
           <Plus size={17} />
-          New maintenance request
+          Find a service
         </button>
-
       </div>
 
-      {/* STATS */}
-
       <div className="stats-grid">
-
         <div className="stat-card">
-
           <div className="stat-card-top">
             <p>
-              Properties
+              Services
             </p>
 
             <Building2 size={18} />
@@ -259,16 +248,14 @@ export default function Dashboard() {
           </h2>
 
           <span>
-            Total properties
+            Total services and resources
           </span>
-
         </div>
 
         <div className="stat-card">
-
           <div className="stat-card-top">
             <p>
-              Open maintenance
+              Open requests
             </p>
 
             <Wrench size={18} />
@@ -279,16 +266,14 @@ export default function Dashboard() {
           </h2>
 
           <span>
-            Requests needing attention
+            Requests still in progress
           </span>
-
         </div>
 
         <div className="stat-card">
-
           <div className="stat-card-top">
             <p>
-              Urgent issues
+              Urgent requests
             </p>
 
             <AlertTriangle size={18} />
@@ -299,16 +284,14 @@ export default function Dashboard() {
           </h2>
 
           <span>
-            High priority requests
+            High-priority requests
           </span>
-
         </div>
 
         <div className="stat-card">
-
           <div className="stat-card-top">
             <p>
-              Contractor replies
+              Provider replies
             </p>
 
             <Mail size={18} />
@@ -321,20 +304,14 @@ export default function Dashboard() {
           <span>
             Recent responses received
           </span>
-
         </div>
-
       </div>
 
-      {/* RECENT CONTRACTOR REPLIES */}
-
       <section className="dashboard-card">
-
         <div className="card-header">
-
           <div>
             <p className="eyebrow">
-              Contractor communication
+              Communication
             </p>
 
             <h2>
@@ -342,27 +319,22 @@ export default function Dashboard() {
             </h2>
 
             <p className="card-subtitle">
-              The latest responses from contractors
-              contacted about your maintenance requests.
+              The latest responses from service providers
+              contacted about your requests.
             </p>
           </div>
 
           <button
             className="text-button"
-            onClick={
-              viewAllMaintenance
-            }
+            onClick={viewAllMaintenance}
           >
-            View maintenance
+            View requests
             <ArrowUpRight size={14} />
           </button>
-
         </div>
 
         {maintenanceLoading ? (
-
           <div className="empty-state">
-
             <div className="empty-icon">
               <Mail size={20} />
             </div>
@@ -372,137 +344,102 @@ export default function Dashboard() {
             </h3>
 
             <p>
-              Checking for recent contractor responses.
+              Checking for recent responses.
             </p>
-
           </div>
-
         ) : recentReplies.length === 0 ? (
-
           <div className="empty-state">
-
             <div className="empty-icon">
               <Mail size={20} />
             </div>
 
             <h3>
-              No contractor replies yet
+              No replies yet
             </h3>
 
             <p>
-              Contractor responses will appear here
-              when they reply to your maintenance requests.
+              Responses from service providers will appear
+              here when they reply to your requests.
             </p>
-
           </div>
-
         ) : (
-
           <div className="dashboard-maintenance-list">
+            {recentReplies.map((reply, index) => {
+              const subject =
+                reply.subject ||
+                "Service provider reply"
 
-            {recentReplies.map(
-              (reply, index) => {
-
-                const subject =
-                  reply.subject ||
-                  "Contractor reply"
-
-                return (
-                  <div
-                    className="dashboard-maintenance-item"
-                    key={
-                      reply.id ||
-                      `${reply.maintenance_request_id}-${index}`
+              return (
+                <div
+                  className="dashboard-maintenance-item"
+                  key={
+                    reply.id ||
+                    `${reply.maintenance_request_id}-${index}`
+                  }
+                  onClick={viewMaintenanceRequest}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" ||
+                      event.key === " "
+                    ) {
+                      viewMaintenanceRequest()
                     }
-                    onClick={
-                      viewMaintenanceRequest
-                    }
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key ===
-                          "Enter" ||
-                        event.key ===
-                          " "
-                      ) {
-                        viewMaintenanceRequest()
-                      }
-                    }}
-                  >
-
-                    <div className="dashboard-maintenance-icon">
-                      <Mail size={17} />
-                    </div>
-
-                    <div className="dashboard-maintenance-content">
-
-                      <div className="dashboard-maintenance-top">
-
-                        <strong>
-                          {reply.contractor_name}
-                        </strong>
-
-                        <span>
-                          {formatReplyDate(
-                            reply
-                          )}
-                        </span>
-
-                      </div>
-
-                      <p>
-                        {subject}
-                      </p>
-
-                      <p>
-                        {getReplyPreview(
-                          reply
-                        )}
-                      </p>
-
-                      <div className="dashboard-maintenance-meta">
-
-                        <span>
-                          {reply.property_address ||
-                            "Property"}
-                        </span>
-
-                        <span>
-                          {reply.maintenance_category ||
-                            "Maintenance request"}
-                        </span>
-
-                      </div>
-
-                    </div>
-
-                    <div className="dashboard-maintenance-arrow">
-                      <ArrowUpRight
-                        size={16}
-                      />
-                    </div>
-
+                  }}
+                >
+                  <div className="dashboard-maintenance-icon">
+                    <Mail size={17} />
                   </div>
-                )
-              }
-            )}
 
+                  <div className="dashboard-maintenance-content">
+                    <div className="dashboard-maintenance-top">
+                      <strong>
+                        {reply.contractor_name}
+                      </strong>
+
+                      <span>
+                        {formatReplyDate(reply)}
+                      </span>
+                    </div>
+
+                    <p>
+                      {subject}
+                    </p>
+
+                    <p>
+                      {getReplyPreview(reply)}
+                    </p>
+
+                    <div className="dashboard-maintenance-meta">
+                      <span>
+                        {reply.property_address ||
+                          reply.location ||
+                          "Location not specified"}
+                      </span>
+
+                      <span>
+                        {reply.maintenance_category ||
+                          "Service request"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="dashboard-maintenance-arrow">
+                    <ArrowUpRight size={16} />
+                  </div>
+                </div>
+              )
+            })}
           </div>
-
         )}
-
       </section>
 
-      {/* RECENT MAINTENANCE */}
-
       <section className="dashboard-card dashboard-maintenance-card">
-
         <div className="card-header">
-
           <div>
             <p className="eyebrow">
-              Maintenance
+              Your activity
             </p>
 
             <h2>
@@ -510,27 +447,21 @@ export default function Dashboard() {
             </h2>
 
             <p className="card-subtitle">
-              The latest maintenance issues across
-              your properties.
+              Your latest service requests and their details.
             </p>
           </div>
 
           <button
             className="text-button"
-            onClick={
-              viewAllMaintenance
-            }
+            onClick={viewAllMaintenance}
           >
             View all
             <ArrowUpRight size={14} />
           </button>
-
         </div>
 
         {maintenanceLoading ? (
-
           <div className="empty-state">
-
             <div className="empty-icon">
               <Wrench size={20} />
             </div>
@@ -540,15 +471,11 @@ export default function Dashboard() {
             </h3>
 
             <p>
-              Getting your latest maintenance requests.
+              Getting your latest requests.
             </p>
-
           </div>
-
         ) : recentRequests.length === 0 ? (
-
           <div className="empty-state">
-
             <div className="empty-icon">
               <Wrench size={20} />
             </div>
@@ -558,119 +485,85 @@ export default function Dashboard() {
             </h3>
 
             <p>
-              Create a maintenance request to get
-              started.
+              Find a service to get started.
             </p>
 
             <button
               className="primary-button"
-              onClick={
-                createMaintenanceRequest
-              }
+              onClick={createMaintenanceRequest}
             >
               <Plus size={17} />
-              New request
+              Find a service
             </button>
-
           </div>
-
         ) : (
-
           <div className="dashboard-maintenance-list">
+            {recentRequests.map((request) => {
+              const priority =
+                request.priority ||
+                "normal"
 
-            {recentRequests.map(
-              (request) => {
-
-                const priority =
-                  request.priority ||
-                  "normal"
-
-                return (
-                  <div
-                    className="dashboard-maintenance-item"
-                    key={request.id}
-                    onClick={() =>
-                      navigate(
-                        "/maintenance"
-                      )
+              return (
+                <div
+                  className="dashboard-maintenance-item"
+                  key={request.id}
+                  onClick={() => navigate("/maintenance")}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" ||
+                      event.key === " "
+                    ) {
+                      navigate("/maintenance")
                     }
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key ===
-                          "Enter" ||
-                        event.key ===
-                          " "
-                      ) {
-                        navigate(
-                          "/maintenance"
-                        )
-                      }
-                    }}
-                  >
-
-                    <div className="dashboard-maintenance-icon">
-                      <Wrench size={17} />
-                    </div>
-
-                    <div className="dashboard-maintenance-content">
-
-                      <div className="dashboard-maintenance-top">
-
-                        <strong>
-                          {request.category ||
-                            "Maintenance request"}
-                        </strong>
-
-                        <span
-                          className={`priority-badge ${priority}`}
-                        >
-                          {priority}
-                        </span>
-
-                      </div>
-
-                      <p>
-                        {request.description ||
-                          "No description provided"}
-                      </p>
-
-                      <div className="dashboard-maintenance-meta">
-
-                        <span>
-                          {request.property_address ||
-                            request.location ||
-                            "Property"}
-                        </span>
-
-                        <span>
-                          {formatDate(
-                            request.created_at
-                          )}
-                        </span>
-
-                      </div>
-
-                    </div>
-
-                    <div className="dashboard-maintenance-arrow">
-                      <ArrowUpRight
-                        size={16}
-                      />
-                    </div>
-
+                  }}
+                >
+                  <div className="dashboard-maintenance-icon">
+                    <Wrench size={17} />
                   </div>
-                )
-              }
-            )}
 
+                  <div className="dashboard-maintenance-content">
+                    <div className="dashboard-maintenance-top">
+                      <strong>
+                        {request.category ||
+                          "Service request"}
+                      </strong>
+
+                      <span
+                        className={`priority-badge ${priority}`}
+                      >
+                        {priority}
+                      </span>
+                    </div>
+
+                    <p>
+                      {request.description ||
+                        "No description provided"}
+                    </p>
+
+                    <div className="dashboard-maintenance-meta">
+                      <span>
+                        {request.property_address ||
+                          request.location ||
+                          "Location not specified"}
+                      </span>
+
+                      <span>
+                        {formatDate(request.created_at)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="dashboard-maintenance-arrow">
+                    <ArrowUpRight size={16} />
+                  </div>
+                </div>
+              )
+            })}
           </div>
-
         )}
-
       </section>
-
     </div>
   )
 }

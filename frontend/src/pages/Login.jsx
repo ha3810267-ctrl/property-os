@@ -97,7 +97,7 @@ export default function Login() {
       setMode("login")
 
       setError(
-        "Organisation created successfully — sign in to continue"
+        "Account created successfully — sign in to continue"
       )
     } catch (error) {
       setError(error.message || "Something went wrong")
@@ -111,10 +111,9 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-
         <div className="brand">
-          <div className="brand-mark">P</div>
-          <span>PropertyOS</span>
+          <div className="brand-mark">S</div>
+          <span>ServiceOS</span>
         </div>
 
         <div className="login-header">
@@ -124,30 +123,29 @@ export default function Login() {
 
           <h1>
             {isSignup
-              ? "Create your organisation"
+              ? "Create your account"
               : "Sign in"}
           </h1>
 
           <p>
             {isSignup
-              ? "Set up your PropertyOS organisation"
-              : "Sign in to manage your properties"}
+              ? "Set up your account to start finding services"
+              : "Sign in to find services and manage your requests"}
           </p>
         </div>
 
         <form onSubmit={handleSubmit}>
-
           {isSignup && (
             <>
               <label>
-                Organisation name
+                Organisation or business name
 
                 <input
                   value={organisationName}
                   onChange={(event) =>
                     setOrganisationName(event.target.value)
                   }
-                  placeholder="e.g. Smith Property Management"
+                  placeholder="e.g. Smith Services"
                   required
                   disabled={loading}
                 />
@@ -205,8 +203,6 @@ export default function Login() {
             />
           </label>
 
-          {/* Forgot password */}
-
           {!isSignup && (
             <div
               style={{
@@ -242,7 +238,7 @@ export default function Login() {
                 ? "Creating..."
                 : "Signing in..."
               : isSignup
-                ? "Create organisation"
+                ? "Create account"
                 : "Sign in"}
           </button>
         </form>
@@ -268,7 +264,7 @@ export default function Login() {
             </p>
           ) : (
             <p>
-              New to PropertyOS?{" "}
+              New here?{" "}
 
               <button
                 type="button"
@@ -276,12 +272,11 @@ export default function Login() {
                 onClick={() => switchMode("signup")}
                 disabled={loading}
               >
-                Create organisation
+                Create account
               </button>
             </p>
           )}
         </div>
-
       </div>
     </div>
   )

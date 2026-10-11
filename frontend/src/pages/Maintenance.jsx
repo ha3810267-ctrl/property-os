@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react"
 import {
   Wrench,
@@ -18,8 +17,7 @@ import {
 } from "lucide-react"
 import { apiRequest } from "../services/api"
 
-// Route navigation unmounts this page while the backend search keeps running.
-// Keep active IDs outside the component so a remount can restore button state.
+// Keep active searches across route navigation and component remounts.
 const activeExternalWorkerSearches = new Set()
 
 export default function Maintenance() {
@@ -65,7 +63,7 @@ export default function Maintenance() {
       )
     } catch (error) {
       console.error(error)
-      setError(error.message || "Unable to load maintenance")
+      setError(error.message || "Unable to load service requests")
     } finally {
       setLoading(false)
     }
@@ -163,7 +161,7 @@ export default function Maintenance() {
     }
 
     if (!description.trim()) {
-      setFormError("Maintenance description is required")
+      setFormError("Please describe the service you need")
       return
     }
 
@@ -200,7 +198,7 @@ export default function Maintenance() {
     } catch (error) {
       console.error(error)
       setFormError(
-        error.message || "Could not create maintenance request"
+        error.message || "Could not create service request"
       )
     } finally {
       setSaving(false)
@@ -209,7 +207,7 @@ export default function Maintenance() {
 
   async function deleteRequest(request) {
     const confirmed = window.confirm(
-      `Delete this maintenance request?\n\n"${request.description}"`
+      `Delete this service request?\n\n"${request.description}"`
     )
 
     if (!confirmed) return
@@ -230,7 +228,7 @@ export default function Maintenance() {
     } catch (error) {
       console.error(error)
       setError(
-        error.message || "Could not delete maintenance request"
+        error.message || "Could not delete service request"
       )
     }
   }
@@ -256,7 +254,7 @@ export default function Maintenance() {
 
       if (!updated) {
         throw new Error(
-          "External worker search returned an invalid response"
+          "Service provider search returned an invalid response"
         )
       }
 
@@ -270,7 +268,7 @@ export default function Maintenance() {
     } catch (error) {
       console.error(error)
       setError(
-        error.message || "Could not search for external workers"
+        error.message || "Could not find service providers"
       )
     } finally {
       activeExternalWorkerSearches.delete(requestId)
@@ -324,12 +322,13 @@ export default function Maintenance() {
     <div className="dashboard-page maintenance-page">
       <div className="properties-header">
         <div className="properties-title">
-          <p className="eyebrow">Operations</p>
+          <p className="eyebrow">Service finder</p>
 
-          <h1>Maintenance</h1>
+          <h1>Find services</h1>
 
           <p className="page-subtitle">
-            Track and manage maintenance requests across your properties
+            Describe what you need and find suitable service providers
+            for the job.
           </p>
         </div>
 
@@ -340,7 +339,7 @@ export default function Maintenance() {
             disabled={properties.length === 0}
           >
             <Plus size={17} />
-            Add request
+            Find a service
           </button>
         </div>
       </div>
@@ -354,7 +353,7 @@ export default function Maintenance() {
             name="maintenance-search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search maintenance requests..."
+            placeholder="Search requests, services and providers..."
           />
         </div>
 
@@ -368,7 +367,7 @@ export default function Maintenance() {
       {!loading && error && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>Unable to load maintenance</h3>
+            <h3>Unable to load service requests</h3>
             <p>{error}</p>
 
             <button
@@ -384,7 +383,7 @@ export default function Maintenance() {
       {loading && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>Loading maintenance...</h3>
+            <h3>Loading requests...</h3>
           </div>
         </div>
       )}
@@ -399,12 +398,12 @@ export default function Maintenance() {
                 <Wrench size={21} />
               </div>
 
-              <h3>No maintenance requests</h3>
+              <h3>No service requests</h3>
 
               <p>
                 {properties.length === 0
-                  ? "Add a property before creating a maintenance request."
-                  : "Create a maintenance request to start tracking work."}
+                  ? "Add a property before creating a service request."
+                  : "Create a request to start finding suitable providers."}
               </p>
 
               {properties.length > 0 && (
@@ -413,7 +412,7 @@ export default function Maintenance() {
                   onClick={openModal}
                 >
                   <Plus size={17} />
-                  Add request
+                  Find a service
                 </button>
               )}
             </div>
@@ -448,7 +447,7 @@ export default function Maintenance() {
                     <div className="maintenance-content">
                       <div className="maintenance-top">
                         <h2>
-                          {request.category || "Maintenance request"}
+                          {request.category || "Service request"}
                         </h2>
 
                         <span
@@ -464,7 +463,7 @@ export default function Maintenance() {
 
                       <div className="maintenance-meta">
                         <span>
-                          {property?.name || "Unknown property"}
+                          {property?.name || "Associated property"}
                         </span>
 
                         <span>
@@ -484,12 +483,12 @@ export default function Maintenance() {
                         <div className="external-worker-search">
                           <div>
                             <div className="section-label">
-                              Need an external contractor?
+                              Need a service provider?
                             </div>
 
                             <p>
-                              Search for suitable contractors for this
-                              maintenance request.
+                              Find suitable professionals and businesses
+                              for this request.
                             </p>
                           </div>
 
@@ -504,8 +503,8 @@ export default function Maintenance() {
                             <ExternalLink size={16} />
 
                             {isSearchingExternal
-                              ? "Finding contractors..."
-                              : "Find contractors"}
+                              ? "Finding providers..."
+                              : "Find providers"}
                           </button>
                         </div>
                       )}
@@ -517,7 +516,7 @@ export default function Maintenance() {
                               <div className="external-worker-title-row">
                                 <span className="ai-assignment">
                                   <Sparkles size={13} />
-                                  External contractors
+                                  Service providers
                                 </span>
 
                                 <span className="external-worker-count">
@@ -525,12 +524,12 @@ export default function Maintenance() {
                                 </span>
                               </div>
 
-                              <h3>Recommended contractors</h3>
+                              <h3>Recommended providers</h3>
 
                               <p>
-                                Contractors matched to this request.
-                                Those with public email addresses are
-                                contacted automatically.
+                                Providers matched to your request.
+                                Providers with available public email
+                                addresses may be contacted automatically.
                               </p>
                             </div>
                           </div>
@@ -551,7 +550,7 @@ export default function Maintenance() {
 
                                   <span className="selected-badge">
                                     <Check size={13} />
-                                    Selected
+                                    Selected provider
                                   </span>
                                 </div>
 
@@ -764,7 +763,7 @@ export default function Maintenance() {
                     <button
                       className="property-action delete"
                       onClick={() => deleteRequest(request)}
-                      title="Delete maintenance request"
+                      title="Delete service request"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -778,7 +777,7 @@ export default function Maintenance() {
       {completedRequests.length > 0 && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>Completed maintenance</h3>
+            <h3>Completed requests</h3>
 
             <p>
               {completedRequests.length}{" "}
@@ -806,7 +805,7 @@ export default function Maintenance() {
                     <div className="maintenance-content">
                       <div className="maintenance-top">
                         <h2>
-                          {request.category || "Maintenance request"}
+                          {request.category || "Service request"}
                         </h2>
 
                         <span className="priority-badge">
@@ -820,7 +819,7 @@ export default function Maintenance() {
 
                       <div className="maintenance-meta">
                         <span>
-                          {property?.name || "Unknown property"}
+                          {property?.name || "Associated property"}
                         </span>
 
                         <span>
@@ -842,7 +841,7 @@ export default function Maintenance() {
                     <button
                       className="property-action delete"
                       onClick={() => deleteRequest(request)}
-                      title="Delete maintenance request"
+                      title="Delete service request"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -866,8 +865,8 @@ export default function Maintenance() {
           <div className="modal">
             <div className="modal-header">
               <div>
-                <p className="eyebrow">Operations</p>
-                <h2>Add maintenance request</h2>
+                <p className="eyebrow">Service finder</p>
+                <h2>Find a service</h2>
               </div>
 
               <button
@@ -882,7 +881,7 @@ export default function Maintenance() {
 
             <form onSubmit={handleSubmit}>
               <label>
-                Property
+                Associated property
 
                 <select
                   id="maintenance-property"
@@ -910,7 +909,7 @@ export default function Maintenance() {
               </label>
 
               <label>
-                Description
+                What do you need?
 
                 <textarea
                   id="maintenance-description"
@@ -919,7 +918,7 @@ export default function Maintenance() {
                   onChange={(event) =>
                     setDescription(event.target.value)
                   }
-                  placeholder="Describe the maintenance issue..."
+                  placeholder="Describe the service you need, including any relevant details..."
                   disabled={saving}
                   rows={5}
                 />
@@ -944,7 +943,7 @@ export default function Maintenance() {
                   className="primary-button"
                   disabled={saving}
                 >
-                  {saving ? "Creating..." : "Create request"}
+                  {saving ? "Creating..." : "Create service request"}
                 </button>
               </div>
             </form>
@@ -1008,7 +1007,7 @@ function ContractorReplies({
     <div className="contractor-replies">
       <div className="contractor-replies-header">
         <div>
-          <div className="section-label">Contractor replies</div>
+          <div className="section-label">Provider replies</div>
 
           <p>
             {replies.length}{" "}
@@ -1056,7 +1055,7 @@ function ContractorReplies({
                     <strong>
                       {reply.sender_email ||
                         worker.email ||
-                        "Contractor reply"}
+                        "Provider reply"}
                     </strong>
 
                     <span>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import {
-  Building2,
+  MapPin,
   Plus,
   Search,
   Pencil,
@@ -73,12 +73,12 @@ export default function Properties() {
     setFormError("")
 
     if (!name.trim()) {
-      setFormError("Property name is required")
+      setFormError("Location name is required")
       return
     }
 
     if (!address.trim()) {
-      setFormError("Property address is required")
+      setFormError("Location address is required")
       return
     }
 
@@ -159,12 +159,12 @@ export default function Properties() {
     <div className="dashboard-page properties-page">
       <div className="properties-header">
         <div className="properties-title">
-          <p className="eyebrow">Portfolio</p>
+          <p className="eyebrow">Service locations</p>
 
-          <h1>Properties</h1>
+          <h1>Locations</h1>
 
           <p className="page-subtitle">
-            Manage properties across your organisation
+            Manage the locations associated with your service requests
           </p>
         </div>
 
@@ -174,7 +174,7 @@ export default function Properties() {
             onClick={openAddModal}
           >
             <Plus size={17} />
-            Add property
+            Add location
           </button>
         </div>
       </div>
@@ -186,22 +186,22 @@ export default function Properties() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search properties..."
+            placeholder="Search locations..."
           />
         </div>
 
         <span className="properties-count">
           {filteredProperties.length}{" "}
           {filteredProperties.length === 1
-            ? "property"
-            : "properties"}
+            ? "location"
+            : "locations"}
         </span>
       </div>
 
       {!loading && error && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>Unable to load properties</h3>
+            <h3>Unable to load locations</h3>
 
             <p>{error}</p>
 
@@ -218,7 +218,7 @@ export default function Properties() {
       {loading && (
         <div className="dashboard-card">
           <div className="empty-state">
-            <h3>Loading properties...</h3>
+            <h3>Loading locations...</h3>
           </div>
         </div>
       )}
@@ -229,18 +229,18 @@ export default function Properties() {
           <div className="dashboard-card">
             <div className="empty-state">
               <div className="empty-icon">
-                <Building2 size={21} />
+                <MapPin size={21} />
               </div>
 
               <h3>
                 {properties.length === 0
-                  ? "No properties yet"
-                  : "No matching properties"}
+                  ? "No locations yet"
+                  : "No matching locations"}
               </h3>
 
               <p>
                 {properties.length === 0
-                  ? "Add your first property to start managing your portfolio."
+                  ? "Add a location to associate it with your service requests."
                   : "Try a different search term."}
               </p>
 
@@ -250,7 +250,7 @@ export default function Properties() {
                   onClick={openAddModal}
                 >
                   <Plus size={17} />
-                  Add property
+                  Add location
                 </button>
               )}
             </div>
@@ -268,14 +268,14 @@ export default function Properties() {
               >
                 <div className="property-card-top">
                   <div className="property-icon">
-                    <Building2 size={20} />
+                    <MapPin size={20} />
                   </div>
 
                   <div className="property-actions">
                     <button
                       className="property-action"
                       onClick={() => openEditModal(property)}
-                      title="Edit property"
+                      title="Edit location"
                       aria-label={`Edit ${property.name}`}
                     >
                       <Pencil size={16} />
@@ -284,7 +284,7 @@ export default function Properties() {
                     <button
                       className="property-action delete"
                       onClick={() => handleDelete(property)}
-                      title="Delete property"
+                      title="Delete location"
                       aria-label={`Delete ${property.name}`}
                     >
                       <Trash2 size={16} />
@@ -313,13 +313,13 @@ export default function Properties() {
             <div className="modal-header">
               <div>
                 <p className="eyebrow">
-                  {editingProperty ? "Property" : "Portfolio"}
+                  {editingProperty ? "Location" : "Service locations"}
                 </p>
 
                 <h2>
                   {editingProperty
-                    ? "Edit property"
-                    : "Add property"}
+                    ? "Edit location"
+                    : "Add location"}
                 </h2>
               </div>
 
@@ -335,14 +335,14 @@ export default function Properties() {
 
             <form onSubmit={handleSubmit}>
               <label>
-                Property name
+                Location name
 
                 <input
                   value={name}
                   onChange={(event) =>
                     setName(event.target.value)
                   }
-                  placeholder="e.g. 24 High Street"
+                  placeholder="e.g. Home, Office or Site A"
                   disabled={saving}
                 />
               </label>
@@ -383,7 +383,7 @@ export default function Properties() {
                     ? "Saving..."
                     : editingProperty
                       ? "Save changes"
-                      : "Create property"}
+                      : "Create location"}
                 </button>
               </div>
             </form>
