@@ -1,6 +1,7 @@
+
 import {
-  Building2,
-  Wrench,
+  Search,
+  ClipboardList,
   AlertTriangle,
   ArrowUpRight,
   Plus,
@@ -23,78 +24,62 @@ export default function Dashboard() {
   useEffect(() => {
     async function loadDashboard() {
       try {
-        const [
-          statsData,
-          maintenanceData,
-        ] = await Promise.all([
-          apiRequest("/dashboard/stats"),
-          apiRequest("/maintenance-requests"),
-        ])
+        const [statsData, maintenanceData] =
+          await Promise.all([
+            apiRequest("/dashboard/stats"),
+            apiRequest("/maintenance-requests"),
+          ])
 
         setStats(statsData)
 
-        const requests = Array.isArray(
-          maintenanceData
-        )
+        const requests = Array.isArray(maintenanceData)
           ? maintenanceData
           : []
 
-        const activeRequests =
-          requests.filter(
-            (request) =>
-              request.status !== "completed" &&
-              request.status !== "cancelled"
-          )
+        const activeRequests = requests.filter(
+          (request) =>
+            request.status !== "completed" &&
+            request.status !== "cancelled"
+        )
 
-        const sortedRequests = [
-          ...activeRequests,
-        ].sort(
+        const sortedRequests = [...activeRequests].sort(
           (a, b) =>
-            new Date(b.created_at) -
-            new Date(a.created_at)
+            new Date(b.created_at) - new Date(a.created_at)
         )
 
-        setRecentRequests(
-          sortedRequests.slice(0, 6)
-        )
+        setRecentRequests(sortedRequests.slice(0, 6))
 
         const replies = []
 
         requests.forEach((request) => {
-          const externalWorkers =
-            Array.isArray(request.external_workers)
-              ? request.external_workers
-              : []
+          const externalWorkers = Array.isArray(
+            request.external_workers
+          )
+            ? request.external_workers
+            : []
 
           externalWorkers.forEach((worker) => {
-            const workerReplies =
-              Array.isArray(worker.replies)
-                ? worker.replies
-                : []
+            const workerReplies = Array.isArray(worker.replies)
+              ? worker.replies
+              : []
 
             workerReplies.forEach((reply) => {
-              if (
-                reply.direction !== "inbound"
-              ) {
+              if (reply.direction !== "inbound") {
                 return
               }
 
               replies.push({
                 ...reply,
-                maintenance_request_id:
-                  request.id,
-                maintenance_description:
-                  request.description,
-                maintenance_category:
-                  request.category,
+                maintenance_request_id: request.id,
+                maintenance_description: request.description,
+                maintenance_category: request.category,
                 property_address:
-                  request.property_address ||
-                  request.location,
+                  request.property_address || request.location,
                 contractor_name:
                   worker.name ||
                   worker.business_name ||
                   worker.company_name ||
-                  "Service provider",
+                  "Service professional",
               })
             })
           })
@@ -103,25 +88,16 @@ export default function Dashboard() {
         replies.sort(
           (a, b) =>
             new Date(
-              b.received_at ||
-                b.created_at ||
-                b.date
+              b.received_at || b.created_at || b.date
             ) -
             new Date(
-              a.received_at ||
-                a.created_at ||
-                a.date
+              a.received_at || a.created_at || a.date
             )
         )
 
-        setRecentReplies(
-          replies.slice(0, 5)
-        )
+        setRecentReplies(replies.slice(0, 5))
       } catch (error) {
-        console.error(
-          "Failed to load dashboard:",
-          error
-        )
+        console.error("Failed to load dashboard:", error)
       } finally {
         setMaintenanceLoading(false)
       }
@@ -130,44 +106,25 @@ export default function Dashboard() {
     loadDashboard()
   }, [])
 
-  function formatStatus(status) {
-    if (!status) return ""
-
-    return status
-      .replaceAll("_", " ")
-      .replace(/\b\w/g, (letter) =>
-        letter.toUpperCase()
-      )
-  }
-
   function formatDate(date) {
     if (!date) return ""
 
     const parsedDate = new Date(date)
 
-    if (
-      Number.isNaN(
-        parsedDate.getTime()
-      )
-    ) {
+    if (Number.isNaN(parsedDate.getTime())) {
       return ""
     }
 
-    return parsedDate.toLocaleDateString(
-      undefined,
-      {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }
-    )
+    return parsedDate.toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    })
   }
 
   function formatReplyDate(reply) {
     return formatDate(
-      reply.received_at ||
-        reply.created_at ||
-        reply.date
+      reply.received_at || reply.created_at || reply.date
     )
   }
 
@@ -186,7 +143,7 @@ export default function Dashboard() {
       .trim()
 
     if (!cleaned) {
-      return "Service provider sent a reply."
+      return "Service professional sent a reply."
     }
 
     return cleaned.length > 180
@@ -194,139 +151,103 @@ export default function Dashboard() {
       : cleaned
   }
 
-  function createMaintenanceRequest() {
-    navigate("/maintenance")
+  function createRequest() {
+    navigate("/requests")
   }
 
-  function viewAllMaintenance() {
-    navigate("/maintenance")
+  function viewAllRequests() {
+    navigate("/requests")
   }
 
-  function viewMaintenanceRequest() {
-    navigate("/maintenance")
+  function openRequest() {
+    navigate("/requests")
   }
 
   return (
     <div className="dashboard-page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">
-            Overview
-          </p>
+          <p className="eyebrow">Your workspace</p>
 
-          <h1>
-            Dashboard
-          </h1>
+          <h1>Dashboard</h1>
 
           <p className="page-subtitle">
-            Find services, manage requests and keep track
-            of responses from service providers.
+            Find the right professionals, manage your requests
+            and keep track of responses in one place.
           </p>
         </div>
 
         <button
           className="primary-button"
-          onClick={createMaintenanceRequest}
+          onClick={createRequest}
         >
           <Plus size={17} />
-          Find a service
+          Find a professional
         </button>
       </div>
 
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-card-top">
-            <p>
-              Services
-            </p>
-
-            <Building2 size={18} />
+            <p>Locations</p>
+            <Search size={18} />
           </div>
 
-          <h2>
-            {stats?.properties ?? "—"}
-          </h2>
+          <h2>{stats?.properties ?? "—"}</h2>
 
-          <span>
-            Total services and resources
-          </span>
+          <span>Saved service locations</span>
         </div>
 
         <div className="stat-card">
           <div className="stat-card-top">
-            <p>
-              Open requests
-            </p>
-
-            <Wrench size={18} />
+            <p>Open requests</p>
+            <ClipboardList size={18} />
           </div>
 
-          <h2>
-            {stats?.open_maintenance ?? "—"}
-          </h2>
+          <h2>{stats?.open_maintenance ?? "—"}</h2>
 
-          <span>
-            Requests still in progress
-          </span>
+          <span>Requests still in progress</span>
         </div>
 
         <div className="stat-card">
           <div className="stat-card-top">
-            <p>
-              Urgent requests
-            </p>
-
+            <p>Urgent requests</p>
             <AlertTriangle size={18} />
           </div>
 
-          <h2>
-            {stats?.urgent_issues ?? "—"}
-          </h2>
+          <h2>{stats?.urgent_issues ?? "—"}</h2>
 
-          <span>
-            High-priority requests
-          </span>
+          <span>Requests marked high priority</span>
         </div>
 
         <div className="stat-card">
           <div className="stat-card-top">
-            <p>
-              Provider replies
-            </p>
-
+            <p>Recent replies</p>
             <Mail size={18} />
           </div>
 
-          <h2>
-            {recentReplies.length}
-          </h2>
+          <h2>{recentReplies.length}</h2>
 
-          <span>
-            Recent responses received
-          </span>
+          <span>Responses from professionals</span>
         </div>
       </div>
 
       <section className="dashboard-card">
         <div className="card-header">
           <div>
-            <p className="eyebrow">
-              Communication
-            </p>
+            <p className="eyebrow">Communication</p>
 
-            <h2>
-              Recent replies
-            </h2>
+            <h2>Recent replies</h2>
 
             <p className="card-subtitle">
-              The latest responses from service providers
-              contacted about your requests.
+              The latest responses from professionals contacted
+              about your service requests.
             </p>
           </div>
 
           <button
             className="text-button"
-            onClick={viewAllMaintenance}
+            onClick={viewAllRequests}
           >
             View requests
             <ArrowUpRight size={14} />
@@ -339,13 +260,9 @@ export default function Dashboard() {
               <Mail size={20} />
             </div>
 
-            <h3>
-              Loading replies...
-            </h3>
+            <h3>Loading replies...</h3>
 
-            <p>
-              Checking for recent responses.
-            </p>
+            <p>Checking for recent responses.</p>
           </div>
         ) : recentReplies.length === 0 ? (
           <div className="empty-state">
@@ -353,21 +270,18 @@ export default function Dashboard() {
               <Mail size={20} />
             </div>
 
-            <h3>
-              No replies yet
-            </h3>
+            <h3>No replies yet</h3>
 
             <p>
-              Responses from service providers will appear
-              here when they reply to your requests.
+              Responses from professionals will appear here
+              when they reply to your requests.
             </p>
           </div>
         ) : (
           <div className="dashboard-maintenance-list">
             {recentReplies.map((reply, index) => {
               const subject =
-                reply.subject ||
-                "Service provider reply"
+                reply.subject || "Professional reply"
 
               return (
                 <div
@@ -376,7 +290,7 @@ export default function Dashboard() {
                     reply.id ||
                     `${reply.maintenance_request_id}-${index}`
                   }
-                  onClick={viewMaintenanceRequest}
+                  onClick={openRequest}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(event) => {
@@ -384,7 +298,8 @@ export default function Dashboard() {
                       event.key === "Enter" ||
                       event.key === " "
                     ) {
-                      viewMaintenanceRequest()
+                      event.preventDefault()
+                      openRequest()
                     }
                   }}
                 >
@@ -394,22 +309,14 @@ export default function Dashboard() {
 
                   <div className="dashboard-maintenance-content">
                     <div className="dashboard-maintenance-top">
-                      <strong>
-                        {reply.contractor_name}
-                      </strong>
+                      <strong>{reply.contractor_name}</strong>
 
-                      <span>
-                        {formatReplyDate(reply)}
-                      </span>
+                      <span>{formatReplyDate(reply)}</span>
                     </div>
 
-                    <p>
-                      {subject}
-                    </p>
+                    <p>{subject}</p>
 
-                    <p>
-                      {getReplyPreview(reply)}
-                    </p>
+                    <p>{getReplyPreview(reply)}</p>
 
                     <div className="dashboard-maintenance-meta">
                       <span>
@@ -438,22 +345,18 @@ export default function Dashboard() {
       <section className="dashboard-card dashboard-maintenance-card">
         <div className="card-header">
           <div>
-            <p className="eyebrow">
-              Your activity
-            </p>
+            <p className="eyebrow">Your activity</p>
 
-            <h2>
-              Recent requests
-            </h2>
+            <h2>Recent requests</h2>
 
             <p className="card-subtitle">
-              Your latest service requests and their details.
+              Your latest service requests and their current details.
             </p>
           </div>
 
           <button
             className="text-button"
-            onClick={viewAllMaintenance}
+            onClick={viewAllRequests}
           >
             View all
             <ArrowUpRight size={14} />
@@ -463,51 +366,44 @@ export default function Dashboard() {
         {maintenanceLoading ? (
           <div className="empty-state">
             <div className="empty-icon">
-              <Wrench size={20} />
+              <ClipboardList size={20} />
             </div>
 
-            <h3>
-              Loading requests...
-            </h3>
+            <h3>Loading requests...</h3>
 
-            <p>
-              Getting your latest requests.
-            </p>
+            <p>Getting your latest requests.</p>
           </div>
         ) : recentRequests.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">
-              <Wrench size={20} />
+              <ClipboardList size={20} />
             </div>
 
-            <h3>
-              No recent requests
-            </h3>
+            <h3>No recent requests</h3>
 
             <p>
-              Find a service to get started.
+              Tell Matchly what you need and start finding
+              suitable professionals.
             </p>
 
             <button
               className="primary-button"
-              onClick={createMaintenanceRequest}
+              onClick={createRequest}
             >
               <Plus size={17} />
-              Find a service
+              Find a professional
             </button>
           </div>
         ) : (
           <div className="dashboard-maintenance-list">
             {recentRequests.map((request) => {
-              const priority =
-                request.priority ||
-                "normal"
+              const priority = request.priority || "normal"
 
               return (
                 <div
                   className="dashboard-maintenance-item"
                   key={request.id}
-                  onClick={() => navigate("/maintenance")}
+                  onClick={openRequest}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(event) => {
@@ -515,19 +411,19 @@ export default function Dashboard() {
                       event.key === "Enter" ||
                       event.key === " "
                     ) {
-                      navigate("/maintenance")
+                      event.preventDefault()
+                      openRequest()
                     }
                   }}
                 >
                   <div className="dashboard-maintenance-icon">
-                    <Wrench size={17} />
+                    <ClipboardList size={17} />
                   </div>
 
                   <div className="dashboard-maintenance-content">
                     <div className="dashboard-maintenance-top">
                       <strong>
-                        {request.category ||
-                          "Service request"}
+                        {request.category || "Service request"}
                       </strong>
 
                       <span
@@ -549,9 +445,7 @@ export default function Dashboard() {
                           "Location not specified"}
                       </span>
 
-                      <span>
-                        {formatDate(request.created_at)}
-                      </span>
+                      <span>{formatDate(request.created_at)}</span>
                     </div>
                   </div>
 

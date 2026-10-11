@@ -1,14 +1,16 @@
+
 import { useState } from "react"
 import { NavLink, Outlet, Navigate } from "react-router-dom"
 import {
   LayoutDashboard,
-  Building2,
-  Wrench,
+  MapPin,
+  Search,
   UserRound,
   LogOut,
   Mail,
   Menu,
   X,
+  GitCompareArrows,
 } from "lucide-react"
 
 export default function AppLayout() {
@@ -49,8 +51,10 @@ export default function AppLayout() {
 
       <aside className={`sidebar ${mobileMenuOpen ? "sidebar-open" : ""}`}>
         <div className="brand">
-          <div className="brand-mark">P</div>
-          <span>PropertyOS</span>
+          <div className="brand-mark">
+            <GitCompareArrows size={20} />
+          </div>
+          <span>Matchly</span>
 
           <button
             type="button"
@@ -68,14 +72,14 @@ export default function AppLayout() {
             <span>Dashboard</span>
           </NavLink>
 
-          <NavLink to="/properties" onClick={closeMobileMenu}>
-            <Building2 size={18} />
-            <span>Properties</span>
+          <NavLink to="/requests" onClick={closeMobileMenu}>
+            <Search size={18} />
+            <span>Service Requests</span>
           </NavLink>
 
-          <NavLink to="/maintenance" onClick={closeMobileMenu}>
-            <Wrench size={18} />
-            <span>Maintenance</span>
+          <NavLink to="/locations" onClick={closeMobileMenu}>
+            <MapPin size={18} />
+            <span>Locations</span>
           </NavLink>
 
           <NavLink to="/contact" onClick={closeMobileMenu}>
@@ -112,9 +116,12 @@ export default function AppLayout() {
           >
             <Menu size={22} />
           </button>
+
           <div className="mobile-brand">
-            <div className="brand-mark">P</div>
-            <span>PropertyOS</span>
+            <div className="brand-mark">
+              <GitCompareArrows size={20} />
+            </div>
+            <span>Matchly</span>
           </div>
         </header>
 

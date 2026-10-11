@@ -96,16 +96,13 @@ export default function Account() {
     try {
       setPasswordLoading(true)
 
-      const response = await apiRequest(
-        "/change-password",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            current_password: currentPassword,
-            new_password: newPassword
-          })
-        }
-      )
+      const response = await apiRequest("/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      })
 
       setPasswordSuccess(
         response?.message || "Password changed successfully"
@@ -142,7 +139,7 @@ export default function Account() {
       <div className="page-header">
         <div>
           <h1>Account</h1>
-          <p>Manage your profile and account settings</p>
+          <p>Manage your profile and ServiceOS account settings</p>
         </div>
       </div>
 
@@ -170,7 +167,7 @@ export default function Account() {
 
           <div className="settings-row">
             <div>
-              <span className="settings-label">Email</span>
+              <span className="settings-label">Email address</span>
               <span className="settings-value">
                 {user?.email || "—"}
               </span>
@@ -179,12 +176,12 @@ export default function Account() {
 
           <div className="settings-row">
             <div>
-              <span className="settings-label">Role</span>
+              <span className="settings-label">Account role</span>
               <span className="settings-value">
                 {user?.role
                   ? user.role
                       .replace("_", " ")
-                      .replace(/\b\w/g, letter =>
+                      .replace(/\b\w/g, (letter) =>
                         letter.toUpperCase()
                       )
                   : "—"}
@@ -196,14 +193,14 @@ export default function Account() {
 
       <section className="settings-section">
         <div className="settings-section-header">
-          <h2>Organisation</h2>
-          <p>Your organisation details</p>
+          <h2>Workspace</h2>
+          <p>Details about your ServiceOS workspace</p>
         </div>
 
         <div className="settings-card">
           <div className="settings-row">
             <div>
-              <span className="settings-label">Organisation name</span>
+              <span className="settings-label">Workspace name</span>
               <span className="settings-value">
                 {organisation?.name || "—"}
               </span>
@@ -212,7 +209,7 @@ export default function Account() {
 
           <div className="settings-row">
             <div>
-              <span className="settings-label">Organisation ID</span>
+              <span className="settings-label">Workspace ID</span>
               <span className="settings-value">
                 {organisation?.id || "—"}
               </span>
@@ -305,7 +302,9 @@ export default function Account() {
                     className="settings-button"
                     disabled={passwordLoading}
                   >
-                    {passwordLoading ? "Changing..." : "Change password"}
+                    {passwordLoading
+                      ? "Changing..."
+                      : "Change password"}
                   </button>
 
                   <button

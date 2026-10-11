@@ -52,7 +52,7 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Authenticated routes — use AppLayout and its sidebar */}
+        {/* Authenticated routes */}
         <Route
           element={
             <ProtectedRoute>
@@ -61,10 +61,20 @@ function App() {
           }
         >
           <Route path="/" element={<Dashboard />} />
-          <Route path="/properties" element={<Properties />} />
-          <Route path="/maintenance" element={<Maintenance />} />
+          <Route path="/locations" element={<Properties />} />
+          <Route path="/requests" element={<Maintenance />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/account" element={<Account />} />
+
+          {/* Backwards-compatible routes */}
+          <Route
+            path="/properties"
+            element={<Navigate to="/locations" replace />}
+          />
+          <Route
+            path="/maintenance"
+            element={<Navigate to="/requests" replace />}
+          />
         </Route>
 
         {/* Unknown route */}
