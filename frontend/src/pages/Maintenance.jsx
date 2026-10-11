@@ -971,6 +971,16 @@ function ContractorContact({ worker }) {
         </span>
       )}
 
+      {worker.website && (
+        <a
+          href={worker.website}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ExternalLink size={14} />
+          Website
+        </a>
+      )}
     </div>
   )
 }

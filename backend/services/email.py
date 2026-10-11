@@ -44,4 +44,3 @@ def send_email(
         "reply_to": EMAIL_REPLY_TO,
         "html": html
     })
-
