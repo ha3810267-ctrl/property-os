@@ -1382,10 +1382,8 @@ Return ONLY JSON in this format:
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
-      "website": "https://business-homepage.co.uk",
       "phone": "01234567890",
-      "email": "info@business.co.uk",
-      "source_url": "https://real-source-page.co.uk"
+      "email": "info@business.co.uk"
     }}
   ]
 }}
@@ -1401,56 +1399,35 @@ Rules:
 
 4. If a field cannot be verified, return null.
 
-5. The website must be the actual business homepage: return only the
-   site's root URL (scheme and domain, with no contact or other page path).
+5. The phone number must be an actual publicly listed
+   business phone number.
 
-6. The website must NOT be an image.
+6. The email must be an actual publicly listed
+   business email.
 
-7. The website must NOT be a file or uploaded asset.
+7. The location must be supported by search evidence.
 
-8. Never return URLs ending in .jpg .jpeg .png .webp
-   .gif .svg .pdf or similar file extensions.
+8. The rating and review count must be supported by
+   search evidence.
 
-9. Never return URLs containing /wp-content/uploads/.
-
-10. Do not construct a website from the business name.
-
-11. Do not construct contact URLs.
-
-12. The phone number must be an actual publicly listed
-    business phone number.
-
-13. The email must be an actual publicly listed
-    business email.
-
-14. The location must be supported by search evidence.
-
-15. The rating and review count must be supported by
-    search evidence.
-
-16. source_url must be an actual URL from the search
-    evidence.
-
-17. Prefer the official business website when available.
-
-18. Only return businesses relevant to the requested
+10. Only return businesses relevant to the requested
     trades.
 
-19. Strongly prioritise geographic proximity to the
+11. Strongly prioritise geographic proximity to the
     target property.
 
-20. Prefer businesses that explicitly state they serve
-    the target area.
+12. Prefer businesses that explicitly state they serve
+    the target location.
 
-21. Do not return businesses already listed above.
+13. Do not return businesses already listed above.
 
-22. A business must appear only once.
+14. A business must appear only once.
 
-23. Missing information must be null.
+15. Missing information must be null.
 
-24. Do not output explanations.
+16. Do not output explanations.
 
-25. Do not output markdown.
+17. Do not output markdown.
 """
 
 
@@ -1519,13 +1496,6 @@ def _request_gemini_provider_batch(
                                         ]
                                     },
 
-                                    "website": {
-                                        "type": [
-                                            "string",
-                                            "null"
-                                        ]
-                                    },
-
                                     "phone": {
                                         "type": [
                                             "string",
@@ -1540,12 +1510,6 @@ def _request_gemini_provider_batch(
                                         ]
                                     },
 
-                                    "source_url": {
-                                        "type": [
-                                            "string",
-                                            "null"
-                                        ]
-                                    }
                                 },
 
                                 "required": [
@@ -1939,15 +1903,6 @@ def search_external_workers(
 
                 continue
 
-            # -------------------------------------------------
-            # PARALLEL WEBSITE VERIFICATION
-            # -------------------------------------------------
-
-            verification_results = (
-                _verify_provider_websites_parallel(
-                    prepared_providers
-                )
-            )
 
             # -------------------------------------------------
             # PROCESS VERIFIED RESULTS
@@ -1984,22 +1939,6 @@ def search_external_workers(
                     provider.get("availability")
                 )
 
-                verification = (
-                    verification_results[index]
-                    if index < len(
-                        verification_results
-                    )
-                    else {
-                        "website": None,
-                        "email": None,
-                        "phone": None,
-                    }
-                )
-
-                website = verification.get(
-                    "website"
-                )
-
                 phone = _normalise_phone(
                     provider.get("phone")
                 )
@@ -2008,17 +1947,6 @@ def search_external_workers(
                     provider.get("email")
                 )
 
-                # Prefer information actually found on the
-                # exact verified business website.
-                if verification.get("phone"):
-                    phone = verification[
-                        "phone"
-                    ]
-
-                if verification.get("email"):
-                    email = verification[
-                        "email"
-                    ]
 
                 # -------------------------------------------------
                 # PUBLIC EMAIL REQUIREMENT
@@ -2110,12 +2038,6 @@ def search_external_workers(
                     f"{len(candidates) + 1}"
                 )
 
-                source_url = _normalise_url(
-                    provider.get(
-                        "source_url"
-                    )
-                )
-
                 candidate = ExternalWorkerCandidate(
                     maintenance_request_id=(
                         maintenance_request_id
@@ -2137,13 +2059,13 @@ def search_external_workers(
 
                     availability=availability,
 
-                    website=website,
+                    website=None,
 
                     phone=phone,
 
                     email=email,
 
-                    source_url=source_url,
+                    source_url=None,
                 )
 
                 # Temporary values used by maintenance.py
@@ -3610,10 +3532,8 @@ Return ONLY JSON in this format:
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
-      "website": "https://business-homepage.co.uk",
       "phone": "01234567890",
-      "email": "info@business.co.uk",
-      "source_url": "https://real-source-page.co.uk"
+      "email": "info@business.co.uk"
     }}
   ]
 }}
@@ -3629,56 +3549,35 @@ Rules:
 
 4. If a field cannot be verified, return null.
 
-5. The website must be the actual business homepage: return only the
-   site's root URL (scheme and domain, with no contact or other page path).
+5. The phone number must be an actual publicly listed
+   business phone number.
 
-6. The website must NOT be an image.
+6. The email must be an actual publicly listed
+   business email.
 
-7. The website must NOT be a file or uploaded asset.
+7. The location must be supported by search evidence.
 
-8. Never return URLs ending in .jpg .jpeg .png .webp
-   .gif .svg .pdf or similar file extensions.
+8. The rating and review count must be supported by
+   search evidence.
 
-9. Never return URLs containing /wp-content/uploads/.
-
-10. Do not construct a website from the business name.
-
-11. Do not construct contact URLs.
-
-12. The phone number must be an actual publicly listed
-    business phone number.
-
-13. The email must be an actual publicly listed
-    business email.
-
-14. The location must be supported by search evidence.
-
-15. The rating and review count must be supported by
-    search evidence.
-
-16. source_url must be an actual URL from the search
-    evidence.
-
-17. Prefer the official business website when available.
-
-18. Only return businesses relevant to the requested
+10. Only return businesses relevant to the requested
     trades.
 
-19. Strongly prioritise geographic proximity to the
+11. Strongly prioritise geographic proximity to the
     target property.
 
-20. Prefer businesses that explicitly state they serve
+12. Prefer businesses that explicitly state they serve
     the target location.
 
-21. Do not return businesses already listed above.
+13. Do not return businesses already listed above.
 
-22. A business must appear only once.
+14. A business must appear only once.
 
-23. Missing information must be null.
+15. Missing information must be null.
 
-24. Do not output explanations.
+16. Do not output explanations.
 
-25. Do not output markdown.
+17. Do not output markdown.
 """
 
 
@@ -3747,13 +3646,6 @@ def _request_gemini_provider_batch(
                                         ]
                                     },
 
-                                    "website": {
-                                        "type": [
-                                            "string",
-                                            "null"
-                                        ]
-                                    },
-
                                     "phone": {
                                         "type": [
                                             "string",
@@ -3768,12 +3660,6 @@ def _request_gemini_provider_batch(
                                         ]
                                     },
 
-                                    "source_url": {
-                                        "type": [
-                                            "string",
-                                            "null"
-                                        ]
-                                    }
                                 },
 
                                 "required": [
@@ -4144,11 +4030,6 @@ def search_external_workers(
 
                 continue
 
-            verification_results = (
-                _verify_provider_websites_parallel(
-                    prepared_providers
-                )
-            )
 
             for index, provider in enumerate(
                 prepared_providers
@@ -4181,22 +4062,6 @@ def search_external_workers(
                     provider.get("availability")
                 )
 
-                verification = (
-                    verification_results[index]
-                    if index < len(
-                        verification_results
-                    )
-                    else {
-                        "website": None,
-                        "email": None,
-                        "phone": None,
-                    }
-                )
-
-                website = verification.get(
-                    "website"
-                )
-
                 phone = _normalise_phone(
                     provider.get("phone")
                 )
@@ -4205,15 +4070,6 @@ def search_external_workers(
                     provider.get("email")
                 )
 
-                if verification.get("phone"):
-                    phone = verification[
-                        "phone"
-                    ]
-
-                if verification.get("email"):
-                    email = verification[
-                        "email"
-                    ]
 
                 if not _is_valid_public_email(
                     email
@@ -4294,12 +4150,6 @@ def search_external_workers(
                     f"{len(candidates) + 1}"
                 )
 
-                source_url = _normalise_url(
-                    provider.get(
-                        "source_url"
-                    )
-                )
-
                 candidate = ExternalWorkerCandidate(
                     maintenance_request_id=(
                         maintenance_request_id
@@ -4321,13 +4171,13 @@ def search_external_workers(
 
                     availability=availability,
 
-                    website=website,
+                    website=None,
 
                     phone=phone,
 
                     email=email,
 
-                    source_url=source_url,
+                    source_url=None,
                 )
 
                 candidate._email_send_result = (
