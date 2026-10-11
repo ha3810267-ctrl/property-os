@@ -1382,6 +1382,7 @@ Return ONLY JSON in this format:
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
+      "website": "https://business-homepage.co.uk",
       "phone": "01234567890",
       "email": "info@business.co.uk"
     }}
@@ -1399,15 +1400,17 @@ Rules:
 
 4. If a field cannot be verified, return null.
 
-5. The phone number must be an actual publicly listed
+5. The website must be the actual official business homepage when available; otherwise return null.
+
+6. The phone number must be an actual publicly listed
    business phone number.
 
-6. The email must be an actual publicly listed
+7. The email must be an actual publicly listed
    business email.
 
-7. The location must be supported by search evidence.
+8. The location must be supported by search evidence.
 
-8. The rating and review count must be supported by
+9. The rating and review count must be supported by
    search evidence.
 
 10. Only return businesses relevant to the requested
@@ -1490,6 +1493,13 @@ def _request_gemini_provider_batch(
                                     },
 
                                     "availability": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
+                                    },
+
+                                    "website": {
                                         "type": [
                                             "string",
                                             "null"
@@ -1904,6 +1914,12 @@ def search_external_workers(
                 continue
 
 
+            verification_results = (
+                _verify_provider_websites_parallel(
+                    prepared_providers
+                )
+            )
+
             # -------------------------------------------------
             # PROCESS VERIFIED RESULTS
             # -------------------------------------------------
@@ -1939,6 +1955,8 @@ def search_external_workers(
                     provider.get("availability")
                 )
 
+                verification = verification_results[index]
+
                 phone = _normalise_phone(
                     provider.get("phone")
                 )
@@ -1946,6 +1964,12 @@ def search_external_workers(
                 email = _normalise_email(
                     provider.get("email")
                 )
+
+                if verification.get("phone"):
+                    phone = verification["phone"]
+
+                if verification.get("email"):
+                    email = verification["email"]
 
 
                 # -------------------------------------------------
@@ -3532,6 +3556,7 @@ Return ONLY JSON in this format:
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
+      "website": "https://business-homepage.co.uk",
       "phone": "01234567890",
       "email": "info@business.co.uk"
     }}
@@ -3549,7 +3574,9 @@ Rules:
 
 4. If a field cannot be verified, return null.
 
-5. The phone number must be an actual publicly listed
+5. The website must be the actual official business homepage when available; otherwise return null.
+
+6. The phone number must be an actual publicly listed
    business phone number.
 
 6. The email must be an actual publicly listed
@@ -3640,6 +3667,13 @@ def _request_gemini_provider_batch(
                                     },
 
                                     "availability": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
+                                    },
+
+                                    "website": {
                                         "type": [
                                             "string",
                                             "null"
@@ -4030,6 +4064,11 @@ def search_external_workers(
 
                 continue
 
+            verification_results = (
+                _verify_provider_websites_parallel(
+                    prepared_providers
+                )
+            )
 
             for index, provider in enumerate(
                 prepared_providers
@@ -4062,6 +4101,8 @@ def search_external_workers(
                     provider.get("availability")
                 )
 
+                verification = verification_results[index]
+
                 phone = _normalise_phone(
                     provider.get("phone")
                 )
@@ -4069,6 +4110,12 @@ def search_external_workers(
                 email = _normalise_email(
                     provider.get("email")
                 )
+
+                if verification.get("phone"):
+                    phone = verification["phone"]
+
+                if verification.get("email"):
+                    email = verification["email"]
 
 
                 if not _is_valid_public_email(
