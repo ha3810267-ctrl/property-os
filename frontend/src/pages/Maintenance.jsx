@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react"
 import {
   Wrench,
@@ -76,9 +77,7 @@ export default function Maintenance() {
 
   useEffect(() => {
     function syncExternalWorkerSearches() {
-      setSearchingExternalWorker(
-        new Set(activeExternalWorkerSearches)
-      )
+      setSearchingExternalWorker(new Set(activeExternalWorkerSearches))
     }
 
     window.addEventListener(
@@ -93,60 +92,6 @@ export default function Maintenance() {
       )
     }
   }, [])
-
-  // Automatically refresh maintenance requests while contractor searches run.
-  // This allows newly saved contractors and updated match scores to appear
-  // without the user having to refresh the page.
-  useEffect(() => {
-    if (searchingExternalWorker.size === 0) return
-
-    let cancelled = false
-    let refreshing = false
-
-    async function refreshContractors() {
-      if (refreshing) return
-
-      refreshing = true
-
-      try {
-        const maintenanceData = await apiRequest(
-          "/maintenance-requests"
-        )
-
-        if (!cancelled && Array.isArray(maintenanceData)) {
-          setRequests((current) =>
-            current.map((request) => {
-              const updated = maintenanceData.find(
-                (item) => item.id === request.id
-              )
-
-              return updated || request
-            })
-          )
-        }
-      } catch (error) {
-        console.error(
-          "Could not refresh contractor results:",
-          error
-        )
-      } finally {
-        refreshing = false
-      }
-    }
-
-    // Fetch immediately, then every three seconds.
-    refreshContractors()
-
-    const intervalId = window.setInterval(
-      refreshContractors,
-      3000
-    )
-
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
-  }, [searchingExternalWorker])
 
   function toggleReply(requestId, candidateId, replyId) {
     const key = `${requestId}-${candidateId}-${replyId}`
@@ -294,12 +239,8 @@ export default function Maintenance() {
     if (activeExternalWorkerSearches.has(requestId)) return
 
     activeExternalWorkerSearches.add(requestId)
-    setSearchingExternalWorker(
-      new Set(activeExternalWorkerSearches)
-    )
-    window.dispatchEvent(
-      new Event("external-worker-searches-changed")
-    )
+    setSearchingExternalWorker(new Set(activeExternalWorkerSearches))
+    window.dispatchEvent(new Event("external-worker-searches-changed"))
 
     try {
       setError("")
@@ -333,12 +274,8 @@ export default function Maintenance() {
       )
     } finally {
       activeExternalWorkerSearches.delete(requestId)
-      setSearchingExternalWorker(
-        new Set(activeExternalWorkerSearches)
-      )
-      window.dispatchEvent(
-        new Event("external-worker-searches-changed")
-      )
+      setSearchingExternalWorker(new Set(activeExternalWorkerSearches))
+      window.dispatchEvent(new Event("external-worker-searches-changed"))
     }
   }
 
@@ -1175,3 +1112,4 @@ function ContractorReplies({
     </div>
   )
 }
+
