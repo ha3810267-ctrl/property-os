@@ -3045,6 +3045,7 @@ FIELD RULES:
 """
 
 
+
 def _request_gemini_provider_batch(client, prompt):
     try:
         response = client.interactions.create(
@@ -3067,30 +3068,14 @@ def _request_gemini_provider_batch(client, prompt):
                                 "properties": {
                                     "name": {"type": "string"},
                                     "trade": {"type": "string"},
-                                    "location": {
-                                        "type": ["string", "null"]
-                                    },
-                                    "rating": {
-                                        "type": ["number", "null"]
-                                    },
-                                    "review_count": {
-                                        "type": ["integer", "null"]
-                                    },
-                                    "availability": {
-                                        "type": ["string", "null"]
-                                    },
-                                    "website": {
-                                        "type": ["string", "null"]
-                                    },
-                                    "phone": {
-                                        "type": ["string", "null"]
-                                    },
-                                    "email": {
-                                        "type": ["string", "null"]
-                                    },
-                                    "source_url": {
-                                        "type": ["string", "null"]
-                                    },
+                                    "location": {"type": ["string", "null"]},
+                                    "rating": {"type": ["number", "null"]},
+                                    "review_count": {"type": ["integer", "null"]},
+                                    "availability": {"type": ["string", "null"]},
+                                    "website": {"type": ["string", "null"]},
+                                    "phone": {"type": ["string", "null"]},
+                                    "email": {"type": ["string", "null"]},
+                                    "source_url": {"type": ["string", "null"]},
                                 },
                                 "required": ["name", "trade"],
                             },
@@ -3115,26 +3100,15 @@ def _request_gemini_provider_batch(client, prompt):
             f"Gemini provider search failed: {exc}"
         ) from exc
 
-    output = _clean_json_response(
-        getattr(response, "output_text", None)
+    raw_output = getattr(response, "output_text", None)
+
+    print(
+        "[external search] GEMINI RAW RESPONSE:",
+        repr(raw_output),
+        flush=True,
     )
 
-    if not output:
-        return []
-
-    data = _parse_provider_json(output)
-
-    if data is None:
-        raise ValueError(
-            "Gemini returned malformed provider JSON"
-        )
-
-    if not isinstance(data, dict):
-        return []
-
-    providers = data.get("providers", [])
-
-    return providers if isinstance(providers, list) else []
+    return raw_output
 
 
 def _discover_provider_batch(
