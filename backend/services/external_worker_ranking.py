@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 
 from backend.models.external_worker_candidate import (
-    ExternalWorkerCandidate
+    ExternalWorkerCandidate,
 )
 
 
@@ -11,245 +11,243 @@ from backend.models.external_worker_candidate import (
 # RANKING WEIGHTS
 # ============================================================
 
-# Trade relevance
-TRADE_WEIGHT = 0.25
-
-# Geographic relevance
+SERVICE_WEIGHT = 0.30
 LOCATION_WEIGHT = 0.25
-
-# Contractor reputation
 RATING_WEIGHT = 0.20
 REVIEWS_WEIGHT = 0.10
-
-# Availability
-AVAILABILITY_WEIGHT = 0.15
-
-# Small price signal
+AVAILABILITY_WEIGHT = 0.10
 PRICE_WEIGHT = 0.05
+
+# Backwards compatibility with existing imports.
+TRADE_WEIGHT = SERVICE_WEIGHT
 
 
 # ============================================================
 # HELPERS
 # ============================================================
 
-def _safe_float(
-    value,
-    default=0.0
-):
-    """
-    Safely convert a value to float.
-    """
-
+def _safe_float(value, default=0.0):
     try:
-
         if value is None:
             return default
 
         return float(value)
 
-    except (
-        TypeError,
-        ValueError
-    ):
-
+    except (TypeError, ValueError):
         return default
 
 
-def _clamp(
-    value,
-    minimum=0.0,
-    maximum=1.0
-):
-    """
-    Keep a score between 0 and 1.
-    """
-
-    return max(
-        minimum,
-        min(
-            maximum,
-            value
-        )
-    )
+def _clamp(value, minimum=0.0, maximum=1.0):
+    return max(minimum, min(maximum, value))
 
 
-def _normalise_location_text(
-    value
-):
-    """
-    Normalise location text for comparison.
-
-    This does NOT invent or geocode locations.
-    """
-
+def _normalise_text(value):
     if value is None:
         return ""
 
-    value = str(
-        value
-    ).strip().lower()
+    value = str(value).strip().lower()
 
     if not value:
         return ""
 
-    value = re.sub(
-        r"[^a-z0-9\s]",
-        " ",
-        value
-    )
+    value = value.replace("&", " and ")
 
-    value = re.sub(
-        r"\s+",
-        " ",
-        value
-    ).strip()
+    value = re.sub(r"[^a-z0-9\s]", " ", value)
+    value = re.sub(r"\s+", " ", value)
 
-    return value
+    return value.strip()
 
 
-def _location_tokens(
-    value
-):
-    """
-    Extract useful location words.
+def _normalise_location_text(value):
+    return _normalise_text(value)
 
-    Very short/common words are ignored so that generic
-    words do not artificially increase the location score.
-    """
 
-    value = _normalise_location_text(
-        value
-    )
+def _location_tokens(value):
+    value = _normalise_location_text(value)
 
     if not value:
         return set()
 
     ignored = {
-        "the",
-        "and",
-        "of",
-        "in",
-        "on",
-        "at",
-        "uk",
-        "united",
-        "kingdom",
-        "england",
-        "road",
-        "street",
-        "lane",
-        "avenue",
-        "close",
-        "court",
-        "place",
+        "the", "and", "of", "in", "on", "at",
+        "uk", "united", "kingdom", "england",
+        "road", "street", "lane", "avenue",
+        "close", "court", "place",
     }
 
     return {
         token
         for token in value.split()
-        if len(token) >= 3
-        and token not in ignored
+        if len(token) >= 3 and token not in ignored
     }
 
 
-# ============================================================
-# TRADE SCORE
-# ============================================================
-
-def _trade_score(
-    candidate,
-    required_trades
-):
+def _extract_service_requirements(required_services):
     """
-    Calculate how closely the contractor's trade matches
-    the trades required by the maintenance request.
+    Accept the existing required_trades list as well as
+    arbitrary service requirements.
+
+    Supported examples:
+        ["plumber", "electrician"]
+
+        [
+            {
+                "trade": "photographer",
+                "reason": "Event photography"
+            }
+        ]
+
+    No fixed service-category list is used.
     """
+    requirements = []
 
-    if not required_trades:
-        return 0.5
-
-    candidate_trade = str(
-        getattr(
-            candidate,
-            "trade",
-            ""
-        ) or ""
-    ).strip().lower()
-
-    if not candidate_trade:
-        return 0.5
-
-    normalised_trades = []
-
-    for trade in required_trades:
-
-        if trade is None:
-            continue
-
-        trade = str(
-            trade
-        ).strip().lower()
-
-        if trade:
-            normalised_trades.append(
-                trade
+    for item in required_services or []:
+        if isinstance(item, dict):
+            service = (
+                item.get("trade")
+                or item.get("service")
+                or item.get("category")
+                or ""
             )
 
-    if not normalised_trades:
-        return 0.5
+            reason = (
+                item.get("reason")
+                or item.get("description")
+                or ""
+            )
 
-    if candidate_trade in normalised_trades:
-        return 1.0
+            service = _normalise_text(service)
+            reason = _normalise_text(reason)
 
-    for trade in normalised_trades:
+            if service:
+                requirements.append({
+                    "service": service,
+                    "reason": reason,
+                })
 
-        if (
-            trade in candidate_trade
-            or candidate_trade in trade
-        ):
-            return 0.9
+        else:
+            service = _normalise_text(item)
 
-    return 0.2
+            if service:
+                requirements.append({
+                    "service": service,
+                    "reason": "",
+                })
+
+    return requirements
+
+
+# ============================================================
+# SERVICE RELEVANCE
+# ============================================================
+
+def _service_score(candidate, required_services):
+    """
+    Estimate semantic service relevance using the available
+    service labels and reasons.
+
+    This is deliberately generic: it does not assume every
+    provider is a property-maintenance contractor.
+
+    Note:
+    Text similarity is an estimate, not proof of competence.
+    """
+    requirements = _extract_service_requirements(
+        required_services
+    )
+
+    if not requirements:
+        return 0.50
+
+    candidate_service = _normalise_text(
+        getattr(candidate, "trade", None)
+    )
+
+    if not candidate_service:
+        return 0.30
+
+    candidate_tokens = set(candidate_service.split())
+
+    best_score = 0.0
+
+    for requirement in requirements:
+        service = requirement["service"]
+        reason = requirement["reason"]
+
+        service_tokens = set(service.split())
+        reason_tokens = set(reason.split())
+
+        # Exact service label.
+        if candidate_service == service:
+            best_score = max(best_score, 1.0)
+            continue
+
+        # One label is contained in the other.
+        if service in candidate_service or candidate_service in service:
+            best_score = max(best_score, 0.90)
+            continue
+
+        # Compare the candidate label with the requested service.
+        if service_tokens:
+            overlap = candidate_tokens & service_tokens
+
+            if overlap:
+                precision = len(overlap) / max(
+                    len(candidate_tokens), 1
+                )
+                recall = len(overlap) / max(
+                    len(service_tokens), 1
+                )
+
+                if precision + recall:
+                    f1 = (
+                        2 * precision * recall
+                        / (precision + recall)
+                    )
+                else:
+                    f1 = 0.0
+
+                best_score = max(
+                    best_score,
+                    min(0.85, f1),
+                )
+
+        # The reason can contain useful context, but it is
+        # not treated as definitive proof of a service match.
+        if reason_tokens:
+            overlap = candidate_tokens & reason_tokens
+
+            if overlap:
+                coverage = len(overlap) / max(
+                    len(reason_tokens), 1
+                )
+
+                best_score = max(
+                    best_score,
+                    min(0.70, coverage),
+                )
+
+    # A label with no meaningful overlap is a weak match,
+    # rather than an automatic rejection.
+    return _clamp(max(0.20, best_score))
+
+
+def _trade_score(candidate, required_trades):
+    """
+    Backwards-compatible alias used by existing code.
+    """
+    return _service_score(candidate, required_trades)
 
 
 # ============================================================
 # LOCATION SCORE
 # ============================================================
 
-def _location_score(
-    candidate,
-    target_location
-):
-    """
-    Score how closely the contractor's stated location
-    matches the property's target location.
-
-    This uses ONLY location information actually present
-    on the candidate and the maintenance request.
-
-    It does not invent distances or coordinates.
-
-    Strongest matches:
-
-        exact location text
-        location contained within target
-        target contained within contractor location
-        multiple meaningful location tokens
-
-    Unknown locations receive a neutral score rather than
-    being automatically penalised.
-    """
-
-    target = _normalise_location_text(
-        target_location
-    )
+def _location_score(candidate, target_location):
+    target = _normalise_location_text(target_location)
 
     candidate_location = _normalise_location_text(
-        getattr(
-            candidate,
-            "location",
-            None
-        )
+        getattr(candidate, "location", None)
     )
 
     if not target:
@@ -258,64 +256,35 @@ def _location_score(
     if not candidate_location:
         return 0.35
 
-    # Exact match
     if candidate_location == target:
         return 1.0
 
-    # One location fully contains the other
     if (
         candidate_location in target
         or target in candidate_location
     ):
         return 0.90
 
-    target_tokens = _location_tokens(
-        target
-    )
-
-    candidate_tokens = _location_tokens(
-        candidate_location
-    )
+    target_tokens = _location_tokens(target)
+    candidate_tokens = _location_tokens(candidate_location)
 
     if not target_tokens or not candidate_tokens:
         return 0.35
 
-    overlap = (
-        target_tokens
-        & candidate_tokens
-    )
+    overlap = target_tokens & candidate_tokens
 
-    overlap_count = len(
-        overlap
-    )
-
-    target_count = len(
-        target_tokens
-    )
-
-    candidate_count = len(
-        candidate_tokens
-    )
-
-    # Strong overlap
-    if overlap_count >= 3:
+    if len(overlap) >= 3:
         return 0.90
 
-    if overlap_count == 2:
+    if len(overlap) == 2:
         return 0.80
 
-    if overlap_count == 1:
-        # A single meaningful matching town/area/postcode
-        # is still useful evidence.
-        if (
-            target_count <= 2
-            or candidate_count <= 2
-        ):
+    if len(overlap) == 1:
+        if len(target_tokens) <= 2 or len(candidate_tokens) <= 2:
             return 0.75
 
         return 0.65
 
-    # No textual overlap
     return 0.20
 
 
@@ -323,83 +292,40 @@ def _location_score(
 # RATING SCORE
 # ============================================================
 
-def _rating_score(
-    candidate
-):
-    """
-    Convert a 0-5 contractor rating into 0-1.
-    """
-
+def _rating_score(candidate):
     rating = _safe_float(
-        getattr(
-            candidate,
-            "rating",
-            None
-        )
+        getattr(candidate, "rating", None)
     )
 
     if rating <= 0:
-        return 0.5
+        return 0.50
 
-    return _clamp(
-        rating / 5.0
-    )
+    return _clamp(rating / 5.0)
 
 
 # ============================================================
 # REVIEW SCORE
 # ============================================================
 
-def _review_score(
-    candidate
-):
-    """
-    Give contractors with more reviews more confidence.
-
-    The score is capped so extremely large review counts
-    do not completely dominate the ranking.
-    """
-
+def _review_score(candidate):
     reviews = _safe_float(
-        getattr(
-            candidate,
-            "review_count",
-            None
-        )
+        getattr(candidate, "review_count", None)
     )
 
     if reviews <= 0:
         return 0.25
 
-    return _clamp(
-        reviews / 100.0
-    )
+    return _clamp(reviews / 100.0)
 
 
 # ============================================================
 # AVAILABILITY SCORE
 # ============================================================
 
-def _availability_score(
-    candidate
-):
-    """
-    Estimate availability using information actually present
-    on the discovered contractor.
-
-    Discovery alone does NOT mean the contractor is available.
-
-    If no availability information exists, the contractor
-    receives a neutral score.
-    """
-
-    availability = str(
-        getattr(
-            candidate,
-            "availability",
-            ""
-        ) or ""
-    ).strip().lower()
+def _availability_score(candidate):
+    availability = _normalise_text(
+        getattr(candidate, "availability", None)
+    )
 
     if not availability:
         return 0.50
@@ -409,19 +335,13 @@ def _availability_score(
         "not available",
         "fully booked",
         "booked up",
-        "busy",
-        "cannot",
-        "can't",
-        "unable",
         "no availability",
         "not taking work",
-        "not taking jobs"
+        "not taking jobs",
+        "unable to take work",
     )
 
-    if any(
-        term in availability
-        for term in unavailable_terms
-    ):
+    if any(term in availability for term in unavailable_terms):
         return 0.0
 
     strong_available_terms = (
@@ -432,13 +352,10 @@ def _availability_score(
         "immediately",
         "available now",
         "available today",
-        "available tomorrow"
+        "available tomorrow",
     )
 
-    if any(
-        term in availability
-        for term in strong_available_terms
-    ):
+    if any(term in availability for term in strong_available_terms):
         return 1.0
 
     available_terms = (
@@ -447,13 +364,10 @@ def _availability_score(
         "next week",
         "accepting work",
         "taking work",
-        "taking jobs"
+        "taking jobs",
     )
 
-    if any(
-        term in availability
-        for term in available_terms
-    ):
+    if any(term in availability for term in available_terms):
         return 0.85
 
     return 0.50
@@ -463,32 +377,19 @@ def _availability_score(
 # PRICE SCORE
 # ============================================================
 
-def _price_score(
-    candidate
-):
-    """
-    Give a small ranking signal to contractors with a quote.
-
-    Price is intentionally not a major ranking factor.
-    """
-
-    quoted_price = getattr(
-        candidate,
-        "quoted_price",
-        None
-    )
+def _price_score(candidate):
+    quoted_price = getattr(candidate, "quoted_price", None)
 
     if quoted_price is None:
-        return 0.5
+        return 0.50
 
-    quoted_price = _safe_float(
-        quoted_price,
-        default=0.0
-    )
+    quoted_price = _safe_float(quoted_price, default=0.0)
 
     if quoted_price <= 0:
-        return 0.5
+        return 0.50
 
+    # A quote exists, but without a comparable budget or other
+    # quotes, a low-price ranking advantage cannot be justified.
     return 0.60
 
 
@@ -499,59 +400,34 @@ def _price_score(
 def calculate_external_worker_score(
     candidate,
     required_trades=None,
-    target_location=None
+    target_location=None,
 ):
     """
-    Calculate the contractor's overall match score.
+    Return a score between 0 and 1.
 
-    Score is between 0 and 1.
-
-    Ranking considers:
-
-        trade relevance
-        geographic relevance
-        contractor rating
-        review confidence
-        availability
-        quote information
-
-    There is deliberately no contact or response logic here.
+    The legacy required_trades parameter now represents
+    arbitrary required services/provider types.
     """
+    required_trades = required_trades or []
 
-    required_trades = (
-        required_trades or []
-    )
-
-    trade_score = _trade_score(
+    service_score = _service_score(
         candidate,
-        required_trades
+        required_trades,
     )
 
     location_score = _location_score(
         candidate,
-        target_location
+        target_location,
     )
 
-    rating_score = _rating_score(
-        candidate
-    )
+    rating_score = _rating_score(candidate)
+    review_score = _review_score(candidate)
 
-    review_score = _review_score(
-        candidate
-    )
-
-    availability_score = (
-        _availability_score(
-            candidate
-        )
-    )
-
-    price_score = _price_score(
-        candidate
-    )
+    availability_score = _availability_score(candidate)
+    price_score = _price_score(candidate)
 
     score = (
-        trade_score * TRADE_WEIGHT
+        service_score * SERVICE_WEIGHT
         + location_score * LOCATION_WEIGHT
         + rating_score * RATING_WEIGHT
         + review_score * REVIEWS_WEIGHT
@@ -559,17 +435,9 @@ def calculate_external_worker_score(
         + price_score * PRICE_WEIGHT
     )
 
-    # --------------------------------------------------------
-    # Unavailable contractors
-    # --------------------------------------------------------
-
-    availability = str(
-        getattr(
-            candidate,
-            "availability",
-            ""
-        ) or ""
-    ).strip().lower()
+    availability = _normalise_text(
+        getattr(candidate, "availability", None)
+    )
 
     unavailable_terms = (
         "unavailable",
@@ -578,18 +446,14 @@ def calculate_external_worker_score(
         "booked up",
         "no availability",
         "not taking work",
-        "not taking jobs"
+        "not taking jobs",
+        "unable to take work",
     )
 
-    if any(
-        term in availability
-        for term in unavailable_terms
-    ):
+    if any(term in availability for term in unavailable_terms):
         score *= 0.10
 
-    return _clamp(
-        score
-    )
+    return _clamp(score)
 
 
 # ============================================================
@@ -600,146 +464,60 @@ def build_match_reason(
     candidate,
     score,
     required_trades=None,
-    target_location=None
+    target_location=None,
 ):
     """
-    Build a human-readable explanation for the ranking.
-
-    This function contains NO contractor response or
-    contact-status messaging.
+    Explain the ranking without claiming that availability
+    or professional qualifications have been independently
+    confirmed.
     """
-
-    required_trades = (
-        required_trades or []
-    )
+    required_trades = required_trades or []
 
     reasons = []
 
-    trade_score = _trade_score(
+    service_score = _service_score(
         candidate,
-        required_trades
+        required_trades,
     )
 
     location_score = _location_score(
         candidate,
-        target_location
+        target_location,
     )
 
-    rating_score = _rating_score(
-        candidate
-    )
+    rating_score = _rating_score(candidate)
+    availability_score = _availability_score(candidate)
 
-    availability_score = (
-        _availability_score(
-            candidate
-        )
-    )
-
-    # --------------------------------------------------------
-    # Trade
-    # --------------------------------------------------------
-
-    if trade_score >= 0.9:
-
-        reasons.append(
-            "strong trade match"
-        )
-
-    elif trade_score >= 0.7:
-
-        reasons.append(
-            "relevant trade"
-        )
-
-    # --------------------------------------------------------
-    # Location
-    # --------------------------------------------------------
+    if service_score >= 0.90:
+        reasons.append("strong service match")
+    elif service_score >= 0.65:
+        reasons.append("relevant service")
+    else:
+        reasons.append("service match needs checking")
 
     if location_score >= 0.90:
-
-        reasons.append(
-            "very close location match"
-        )
-
+        reasons.append("strong location match")
     elif location_score >= 0.75:
-
-        reasons.append(
-            "strong local match"
-        )
-
+        reasons.append("good local match")
     elif location_score >= 0.60:
-
-        reasons.append(
-            "nearby service area"
-        )
-
+        reasons.append("some location overlap")
     elif location_score <= 0.25:
-
-        reasons.append(
-            "wider service area"
-        )
-
-    # --------------------------------------------------------
-    # Rating
-    # --------------------------------------------------------
+        reasons.append("wider service area")
 
     if rating_score >= 0.85:
-
-        reasons.append(
-            "strong rating"
-        )
-
+        reasons.append("strong rating")
     elif rating_score >= 0.65:
-
-        reasons.append(
-            "good rating"
-        )
-
-    # --------------------------------------------------------
-    # Availability
-    # --------------------------------------------------------
+        reasons.append("good rating")
 
     if availability_score >= 0.90:
-
-        reasons.append(
-            "strong availability"
-        )
-
+        reasons.append("availability information looks positive")
     elif availability_score >= 0.75:
-
-        reasons.append(
-            "appears available"
-        )
-
+        reasons.append("availability information provided")
     elif availability_score <= 0.10:
+        reasons.append("reported unavailable")
 
-        reasons.append(
-            "currently unavailable"
-        )
-
-    # --------------------------------------------------------
-    # Quote
-    # --------------------------------------------------------
-
-    if getattr(
-        candidate,
-        "quoted_price",
-        None
-    ) is not None:
-
-        reasons.append(
-            "quote provided"
-        )
-
-    # --------------------------------------------------------
-    # Fallback
-    # --------------------------------------------------------
-
-    if not reasons:
-
-        reasons.append(
-            "potential match based on available information"
-        )
+    if getattr(candidate, "quoted_price", None) is not None:
+        reasons.append("quote information provided")
 
     return (
         f"{int(round(score * 100))}% match — "
@@ -748,55 +526,38 @@ def build_match_reason(
 
 
 # ============================================================
-# RANK CONTRACTORS
+# RANK PROVIDERS
 # ============================================================
 
 def rank_external_workers(
     maintenance_description,
     required_trades,
     candidates,
-    target_location=None
+    target_location=None,
 ):
     """
-    Rank all external contractor candidates.
+    Rank external provider candidates.
 
-    Updates:
+    Existing function name and arguments are preserved so
+    current callers continue to work.
 
-        match_score
-        match_reason
-        ranking_updated_at
-        updated_at
-
-    The function NEVER contacts contractors.
-
-    The function NEVER sends or receives messages.
-
-    The function NEVER selects a contractor.
-
-    Selection remains a manager action.
+    This function does not send messages, contact providers,
+    or make the final selection.
     """
-
-    if not isinstance(
-        maintenance_description,
-        str
-    ) or not maintenance_description.strip():
-
+    if (
+        not isinstance(maintenance_description, str)
+        or not maintenance_description.strip()
+    ):
         raise ValueError(
             "Maintenance description is required"
         )
 
-    if not isinstance(
-        required_trades,
-        list
-    ):
-
+    if not isinstance(required_trades, list):
         raise ValueError(
             "required_trades must be a list"
         )
 
-    candidates = list(
-        candidates or []
-    )
+    candidates = list(candidates or [])
 
     if not candidates:
         return []
@@ -804,93 +565,45 @@ def rank_external_workers(
     scored_candidates = []
 
     for candidate in candidates:
-
-        if not isinstance(
-            candidate,
-            ExternalWorkerCandidate
-        ):
+        if not isinstance(candidate, ExternalWorkerCandidate):
             continue
 
         score = calculate_external_worker_score(
             candidate=candidate,
             required_trades=required_trades,
-            target_location=target_location
+            target_location=target_location,
         )
 
         reason = build_match_reason(
             candidate=candidate,
             score=score,
             required_trades=required_trades,
-            target_location=target_location
+            target_location=target_location,
         )
 
         candidate.match_score = score
-
         candidate.match_reason = reason
 
-        candidate.ranking_updated_at = (
-            datetime.now(
-                timezone.utc
-            )
-        )
+        now = datetime.now(timezone.utc)
 
-        candidate.updated_at = (
-            datetime.now(
-                timezone.utc
-            )
-        )
+        candidate.ranking_updated_at = now
+        candidate.updated_at = now
 
-        scored_candidates.append(
-            candidate
-        )
+        scored_candidates.append(candidate)
 
-    # ========================================================
-    # SORT
-    # ========================================================
-
-    def ranking_key(
-        candidate
-    ):
-
+    def ranking_key(candidate):
         return (
-            # Overall score is the primary ranking.
-            getattr(
-                candidate,
-                "match_score",
-                0
-            ),
-
-            # Location is the first tie-breaker.
-            _location_score(
-                candidate,
-                target_location
-            ),
-
-            # Availability
-            _availability_score(
-                candidate
-            ),
-
-            # Rating
-            _rating_score(
-                candidate
-            ),
-
-            # Reviews
-            _review_score(
-                candidate
-            ),
-
-            # Trade
-            _trade_score(
-                candidate,
-                required_trades
-            )
+            getattr(candidate, "match_score", 0) or 0,
+            _service_score(candidate, required_trades),
+            _location_score(candidate, target_location),
+            _availability_score(candidate),
+            _rating_score(candidate),
+            _review_score(candidate),
         )
 
     scored_candidates.sort(
         key=ranking_key,
-        reverse=True
+        reverse=True,
     )
 
     return scored_candidates

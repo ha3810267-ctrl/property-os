@@ -209,17 +209,31 @@ def maintenance_request_response(
     }
 
 
+# ============================================================
+# MATCHLY SERVICE REQUEST EMAIL
+# ============================================================
+
 def build_external_worker_email(
     maintenance_request,
     property_location
 ):
+    """
+    Build a general-purpose service enquiry.
+
+    The wording is deliberately not restricted to property
+    maintenance, plumbing, repairs, or any particular trade.
+
+    The existing function signature is preserved so the
+    current Resend sending workflow does not need to change.
+    """
+
     subject = (
-        f"Maintenance request – {property_location}"
+        f"Service request – {property_location}"
     )
 
     safe_category = escape(
         maintenance_request.category
-        or "Not specified"
+        or "General service enquiry"
     )
 
     safe_priority = escape(
@@ -234,24 +248,38 @@ def build_external_worker_email(
 
     safe_description = escape(
         maintenance_request.description
-    )
+        or ""
+    ).replace("\r\n", "\n").replace("\n", "<br>\n")
 
     html = f"""
-    <div>
-        <h2>Maintenance Request</h2>
+    <div style="
+        font-family: Arial, Helvetica, sans-serif;
+        color: #222222;
+        line-height: 1.6;
+        max-width: 640px;
+    ">
+        <h2 style="margin-bottom: 8px;">
+            Service Enquiry
+        </h2>
 
         <p>
-            <strong>Request #{maintenance_request.id}</strong>
+            Hello,
         </p>
 
         <p>
-            <strong>Category:</strong>
+            We are contacting you through Matchly about
+            a service request that may match the services
+            your business provides.
+        </p>
+
+        <p>
+            <strong>Request reference:</strong>
+            #{maintenance_request.id}
+        </p>
+
+        <p>
+            <strong>Service category:</strong>
             {safe_category}
-        </p>
-
-        <p>
-            <strong>Priority:</strong>
-            {safe_priority}
         </p>
 
         <p>
@@ -260,35 +288,62 @@ def build_external_worker_email(
         </p>
 
         <p>
-            <strong>Issue:</strong>
+            <strong>Priority:</strong>
+            {safe_priority}
         </p>
+
+        <h3>What is needed?</h3>
 
         <p>
             {safe_description}
         </p>
 
         <p>
-            Please reply to this email with your
-            availability and any relevant information
-            about completing the work.
+            If you can help with this request, please reply
+            to this email to let us know:
+        </p>
+
+        <ul>
+            <li>Whether you can provide the requested service</li>
+            <li>Your availability</li>
+            <li>An estimated price or quotation, if possible</li>
+            <li>Any questions or further information you need</li>
+        </ul>
+
+        <p>
+            Thank you for your time.
+        </p>
+
+        <p>
+            Kind regards,<br>
+            Matchly
         </p>
     </div>
     """
 
     text_body = (
-        "Maintenance Request\n\n"
-        f"Request #{maintenance_request.id}\n\n"
-        f"Category: "
-        f"{maintenance_request.category or 'Not specified'}\n\n"
+        "Matchly — Service Enquiry\n\n"
+        "Hello,\n\n"
+        "We are contacting you through Matchly about a "
+        "service request that may match the services "
+        "your business provides.\n\n"
+        f"Request reference: #{maintenance_request.id}\n\n"
+        f"Service category: "
+        f"{maintenance_request.category or 'General service enquiry'}\n\n"
+        f"Location: {property_location or 'Not specified'}\n\n"
         f"Priority: "
         f"{maintenance_request.priority or 'Not specified'}\n\n"
-        f"Location: "
-        f"{property_location or 'Not specified'}\n\n"
-        "Issue:\n"
-        f"{maintenance_request.description}\n\n"
-        "Please reply to this email with your "
-        "availability and any relevant "
-        "information about completing the work."
+        "What is needed?\n\n"
+        f"{maintenance_request.description or ''}\n\n"
+        "If you can help with this request, please reply "
+        "to this email to let us know:\n\n"
+        "- Whether you can provide the requested service\n"
+        "- Your availability\n"
+        "- An estimated price or quotation, if possible\n"
+        "- Any questions or further information you need\n\n"
+        "Thank you for your time.\n\n"
+        "Kind regards,\n"
+        "Matchly"
     )
 
     return subject, html, text_body
@@ -378,13 +433,11 @@ def create_maintenance_request():
         }, 422
 
     try:
-
         ai_result = analyse_maintenance_request(
             description
         )
 
     except ValueError as exc:
-
         return {
             "error": str(exc)
         }, 422
@@ -403,7 +456,6 @@ def create_maintenance_request():
     )
 
     try:
-
         db.session.flush()
 
         create_audit_log(
@@ -416,7 +468,6 @@ def create_maintenance_request():
         db.session.commit()
 
     except IntegrityError:
-
         db.session.rollback()
 
         return {
@@ -427,7 +478,6 @@ def create_maintenance_request():
         }, 409
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
@@ -518,8 +568,7 @@ def get_maintenance_request(
 
 
 # ============================================================
-# GEMINI CONTRACTOR DISCOVERY
-# + PROPERTY LOCATION
+# EXTERNAL SERVICE PROVIDER DISCOVERY
 # + LOCATION-AWARE RANKING
 # + AUTOMATIC EMAIL
 # ============================================================
@@ -580,11 +629,10 @@ def search_external_workers_for_request(
         }, 422
 
     # --------------------------------------------------------
-    # Determine required trades
+    # Determine required services
     # --------------------------------------------------------
 
     try:
-
         ai_result = analyse_maintenance_request(
             maintenance_request.description
         )
@@ -595,7 +643,6 @@ def search_external_workers_for_request(
         )
 
     except ValueError as exc:
-
         return {
             "error": str(exc)
         }, 422
@@ -604,12 +651,12 @@ def search_external_workers_for_request(
         return {
             "error": (
                 "Could not determine the required "
-                "external contractor trade"
+                "service provider"
             )
         }, 422
 
     # --------------------------------------------------------
-    # Build contractor email
+    # Build the general-purpose Matchly email
     # --------------------------------------------------------
 
     (
@@ -642,20 +689,19 @@ def search_external_workers_for_request(
     }
 
     # --------------------------------------------------------
-    # Gemini contractor discovery
+    # Service provider discovery
     # --------------------------------------------------------
 
     print(
         "[external search] started: "
         f"request={maintenance_request.id}, "
-        f"trades={required_trades}, "
+        f"services={required_trades}, "
         f"location={location!r}, "
         f"existing={len(existing_candidates)}",
         flush=True
     )
 
     try:
-
         candidates = find_contractors_with_gemini(
             maintenance_request_id=maintenance_request.id,
             required_trades=required_trades,
@@ -672,11 +718,10 @@ def search_external_workers_for_request(
         )
 
         for candidate in candidates:
-
             print(
                 "[external search] candidate: "
                 f"name={candidate.name!r}, "
-                f"trade={candidate.trade!r}, "
+                f"service={candidate.trade!r}, "
                 f"email={candidate.email!r}, "
                 f"location={candidate.location!r}, "
                 f"source={candidate.source_url!r}",
@@ -684,7 +729,6 @@ def search_external_workers_for_request(
             )
 
     except ValueError as exc:
-
         print(
             "[external search] Gemini validation error: "
             f"{exc!r}",
@@ -696,7 +740,6 @@ def search_external_workers_for_request(
         }, 422
 
     except Exception as exc:
-
         print(
             "[external search] Gemini discovery error: "
             f"{exc!r}",
@@ -705,15 +748,14 @@ def search_external_workers_for_request(
 
         return {
             "error": (
-                "Gemini could not find external contractors"
+                "Gemini could not find external service providers"
             )
         }, 500
 
     if not isinstance(candidates, list):
-
         return {
             "error": (
-                "Gemini contractor search returned "
+                "Gemini service provider search returned "
                 "an invalid result"
             )
         }, 500
@@ -760,15 +802,13 @@ def search_external_workers_for_request(
     )
 
     # --------------------------------------------------------
-    # Save ALL genuinely new candidates
+    # Save all genuinely new candidates
     # --------------------------------------------------------
 
     added_candidates = []
 
     try:
-
         for candidate in new_candidates:
-
             db.session.add(
                 candidate
             )
@@ -791,23 +831,21 @@ def search_external_workers_for_request(
         db.session.commit()
 
     except IntegrityError:
-
         db.session.rollback()
 
         return {
             "error": (
-                "External contractor candidates "
+                "External service provider candidates "
                 "could not be created"
             )
         }, 409
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
             "error": (
-                "External contractor candidates "
+                "External service provider candidates "
                 "could not be saved"
             )
         }, 500
@@ -848,14 +886,12 @@ def search_external_workers_for_request(
                 email_result,
                 dict
             ):
-
                 resend_message_id = (
                     email_result.get("id")
                     or email_result.get("email_id")
                 )
 
             else:
-
                 resend_message_id = getattr(
                     email_result,
                     "id",
@@ -926,9 +962,7 @@ def search_external_workers_for_request(
             })
 
     try:
-
         if sent:
-
             create_audit_log(
                 user=user,
                 action=(
@@ -941,11 +975,10 @@ def search_external_workers_for_request(
         db.session.commit()
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         print(
-            "[contractor email] "
+            "[service email] "
             "email message records could not be saved",
             flush=True
         )
@@ -964,7 +997,6 @@ def search_external_workers_for_request(
     if ranking_pool:
 
         try:
-
             ranking_pool = rank_external_workers(
                 maintenance_description=(
                     maintenance_request.description
@@ -979,13 +1011,12 @@ def search_external_workers_for_request(
             ranking_error = str(exc)
 
             print(
-                "[external search] contractor ranking error:",
+                "[external search] service provider ranking error:",
                 repr(exc),
                 flush=True
             )
 
             for candidate in added_candidates:
-
                 candidate.match_score = None
                 candidate.match_reason = None
 
@@ -1004,7 +1035,7 @@ def search_external_workers_for_request(
     ]
 
     print(
-        "[contractor debug] "
+        "[service provider debug] "
         f"new={len(new_candidates)}, "
         f"saved={len(added_candidates)}, "
         f"final={len(final_candidates)}, "
@@ -1017,9 +1048,7 @@ def search_external_workers_for_request(
     # --------------------------------------------------------
 
     try:
-
         if ranking_pool:
-
             create_audit_log(
                 user=user,
                 action=(
@@ -1032,23 +1061,22 @@ def search_external_workers_for_request(
         db.session.commit()
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         print(
             "[external search] "
-            "contractor ranking changes could not be saved",
+            "service provider ranking changes could not be saved",
             flush=True
         )
 
     # --------------------------------------------------------
-    # Return discovery + ranking + email results
+    # Return discovery, ranking and email results
     # --------------------------------------------------------
 
     response = {
         "message": (
-            "Gemini discovered and ranked "
-            "external contractors"
+            "Matchly discovered and ranked "
+            "external service providers"
         ),
 
         "required_trades": required_trades,
@@ -1085,16 +1113,14 @@ def search_external_workers_for_request(
     }
 
     if ranking_error:
-
         response["ranking_warning"] = (
-            "Contractors were discovered successfully "
-            "but contractor ranking failed"
+            "Service providers were discovered successfully "
+            "but ranking failed"
         )
 
     if len(final_candidates) < TARGET_EXTERNAL_CONTRACTORS:
-
         response["contractor_count_warning"] = (
-            "Fewer than 20 qualifying contractors "
+            "Fewer than 20 qualifying service providers "
             "were available after geographic expansion "
             "and public-email filtering"
         )
@@ -1114,7 +1140,7 @@ def search_external_workers_for_request(
 
 
 # ============================================================
-# SELECT / DESELECT EXTERNAL CONTRACTOR
+# SELECT / DESELECT EXTERNAL SERVICE PROVIDER
 # ============================================================
 
 @maintenance_bp.route(
@@ -1161,13 +1187,12 @@ def select_external_worker(
     if not candidate:
         return {
             "error": (
-                "External contractor candidate "
+                "External service provider candidate "
                 "not found"
             )
         }, 404
 
     try:
-
         if candidate.is_selected:
 
             candidate.is_selected = False
@@ -1198,12 +1223,11 @@ def select_external_worker(
         db.session.commit()
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
             "error": (
-                "External contractor selection "
+                "External service provider selection "
                 "could not be updated"
             )
         }, 500
@@ -1311,7 +1335,6 @@ def update_maintenance_request(
         maintenance_request.category = category
 
     try:
-
         db.session.flush()
 
         create_audit_log(
@@ -1326,7 +1349,6 @@ def update_maintenance_request(
         db.session.commit()
 
     except IntegrityError:
-
         db.session.rollback()
 
         return {
@@ -1338,7 +1360,6 @@ def update_maintenance_request(
         }, 409
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
@@ -1388,7 +1409,6 @@ def delete_maintenance_request(
         }, 404
 
     try:
-
         db.session.execute(
             delete(ExternalWorkerMessage).where(
                 ExternalWorkerMessage
@@ -1423,7 +1443,6 @@ def delete_maintenance_request(
         db.session.commit()
 
     except IntegrityError:
-
         db.session.rollback()
 
         return {
@@ -1434,7 +1453,6 @@ def delete_maintenance_request(
         }, 409
 
     except SQLAlchemyError:
-
         db.session.rollback()
 
         return {
