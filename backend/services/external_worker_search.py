@@ -5,7 +5,7 @@ import re
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from google import genai
@@ -661,6 +661,32 @@ def _is_valid_business_website(url):
         return None
 
     path = parsed.path.lower()
+
+    # Search grounding sometimes returns mangled deep links such as
+    # /contact-1-1-1-1-1. Keep the verified domain but use its homepage
+    # instead of exposing that unusable path as the business website.
+    repeated_number_suffixes = re.search(
+        r"(?:-\d+){3,}",
+        path
+    )
+
+    if repeated_number_suffixes:
+        homepage = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            "/",
+            "",
+            "",
+            ""
+        ))
+
+        print(
+            "[external search] replaced malformed repeated website path "
+            f"with domain homepage: {url!r} -> {homepage!r}",
+            flush=True
+        )
+
+        return homepage
 
     rejected_extensions = (
         ".jpg",
@@ -1375,7 +1401,8 @@ Rules:
 
 4. If a field cannot be verified, return null.
 
-5. The website must be the actual business homepage.
+5. The website must be the actual business homepage: return only the
+   site's root URL (scheme and domain, with no contact or other page path).
 
 6. The website must NOT be an image.
 
@@ -2862,6 +2889,32 @@ def _is_valid_business_website(url):
 
     path = parsed.path.lower()
 
+    # Search grounding sometimes returns mangled deep links such as
+    # /contact-1-1-1-1-1. Keep the verified domain but use its homepage
+    # instead of exposing that unusable path as the business website.
+    repeated_number_suffixes = re.search(
+        r"(?:-\d+){3,}",
+        path
+    )
+
+    if repeated_number_suffixes:
+        homepage = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            "/",
+            "",
+            "",
+            ""
+        ))
+
+        print(
+            "[external search] replaced malformed repeated website path "
+            f"with domain homepage: {url!r} -> {homepage!r}",
+            flush=True
+        )
+
+        return homepage
+
     rejected_extensions = (
         ".jpg",
         ".jpeg",
@@ -3576,7 +3629,8 @@ Rules:
 
 4. If a field cannot be verified, return null.
 
-5. The website must be the actual business homepage.
+5. The website must be the actual business homepage: return only the
+   site's root URL (scheme and domain, with no contact or other page path).
 
 6. The website must NOT be an image.
 
