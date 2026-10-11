@@ -2205,20 +2205,102 @@ def search_external_workers(
                 )
 
                 break
-import ipaddress
+
+        # -----------------------------------------------------
+        # TIER SUMMARY
+        # -----------------------------------------------------
+
+        tier_added = (
+            len(candidates)
+            - tier_start_count
+        )
+
+        print(
+            "[external search] completed location tier: "
+            f"{tier_name!r}, "
+            f"qualifying added={tier_added}, "
+            f"total qualifying="
+            f"{len(candidates)}/{TARGET_CONTRACTORS}",
+            flush=True
+        )
+
+        # -----------------------------------------------------
+        # ONLY BROADEN IF NECESSARY
+        # -----------------------------------------------------
+
+        if len(candidates) >= TARGET_CONTRACTORS:
+
+            print(
+                "[external search] enough qualifying "
+                "contractors found. "
+                "No broader geographic search required.",
+                flush=True
+            )
+
+            break
+
+        if tier_index < len(location_tiers) - 1:
+
+            next_tier_name = location_tiers[
+                tier_index + 1
+            ][0]
+
+            print(
+                "[external search] insufficient qualifying "
+                f"contractors after tier={tier_name!r}: "
+                f"{len(candidates)}/{TARGET_CONTRACTORS}. "
+                f"Expanding to {next_tier_name!r}.",
+                flush=True
+            )
+
+    # ========================================================
+    # FINAL RESULT
+    # ========================================================
+
+    print(
+        "[external search] final qualifying candidates: "
+        f"{len(candidates)}/{TARGET_CONTRACTORS}",
+        flush=True
+    )
+
+    if len(candidates) < TARGET_CONTRACTORS:
+
+        print(
+            "[external search] WARNING: fewer than "
+            f"{TARGET_CONTRACTORS} qualifying contractors "
+            "were found after all geographic search tiers.",
+            flush=True
+        )
+
+    return candidates[:TARGET_CONTRACTORS]
+
+
+def find_contractors_with_gemini(
+    maintenance_request_id,
+    required_trades,
+    location=None,
+    email_subject=None,
+    email_html=None,
+    email_text_body=None
+):
+    return search_external_workers(
+        maintenance_request_id=(
+            maintenance_request_id
+        ),
+        required_trades=required_trades,
+        location=location,
+        email_subject=email_subject,
+        email_html=email_html,
+        email_text_body=email_text_body
+    )
 import json
 import os
 import re
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
-from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlparse, urlunparse
-from urllib.request import (
-    HTTPRedirectHandler,
-    Request,
-    build_opener,
-)
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from google import genai
 
@@ -2228,7 +2310,7 @@ from backend.services.email import send_email
 
 EMAIL_PATTERN = re.compile(
     r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}",
-    re.IGNORECASE,
+    re.IGNORECASE
 )
 
 MAX_PAGE_BYTES = 2_000_000
@@ -2237,11 +2319,10 @@ MAX_PARALLEL_WEBSITE_CHECKS = 8
 
 TARGET_CONTRACTORS = 20
 MAX_GEMINI_JSON_ATTEMPTS = 2
-MAX_PROVIDERS_PER_BATCH = 10
 
 USER_AGENT = (
     "Mozilla/5.0 "
-    "(compatible; Matchly Provider Research/1.0)"
+    "(compatible; PropertyOS Contractor Research/1.0)"
 )
 
 
@@ -2253,13 +2334,17 @@ def _get_gemini_client():
     api_key = os.getenv("GEMINI_API_KEY")
 
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not configured")
+        raise RuntimeError(
+            "GEMINI_API_KEY is not configured"
+        )
 
-    return genai.Client(api_key=api_key)
+    return genai.Client(
+        api_key=api_key
+    )
 
 
 def _clean_json_response(text):
-    if not isinstance(text, str):
+    if not text:
         return ""
 
     text = text.strip()
@@ -2269,9 +2354,14 @@ def _clean_json_response(text):
             r"^```(?:json)?\s*",
             "",
             text,
-            flags=re.IGNORECASE,
+            flags=re.IGNORECASE
         )
-        text = re.sub(r"\s*```$", "", text)
+
+        text = re.sub(
+            r"\s*```$",
+            "",
+            text
+        )
 
     return text.strip()
 
@@ -2280,31 +2370,46 @@ def _extract_json_object(text):
     if not text:
         return ""
 
+    text = text.strip()
+
+    if text.startswith("{") and text.endswith("}"):
+        return text
+
     start = text.find("{")
     end = text.rfind("}")
 
-    if start == -1 or end <= start:
+    if start == -1 or end == -1 or end <= start:
         return text
 
     return text[start:end + 1].strip()
 
 
 def _parse_provider_json(output):
-    output = _clean_json_response(output)
+    output = _clean_json_response(
+        output
+    )
 
     if not output:
         return None
 
     try:
-        return json.loads(output)
+        return json.loads(
+            output
+        )
+
     except json.JSONDecodeError:
         pass
 
-    extracted = _extract_json_object(output)
+    extracted = _extract_json_object(
+        output
+    )
 
     if extracted != output:
         try:
-            return json.loads(extracted)
+            return json.loads(
+                extracted
+            )
+
         except json.JSONDecodeError:
             pass
 
@@ -2319,83 +2424,35 @@ def _normalise_trade(trade):
     if not isinstance(trade, str):
         return ""
 
-    trade = unescape(trade).strip().lower()
-    trade = re.sub(r"[_/&-]+", " ", trade)
-    trade = re.sub(r"[^\w\s]", "", trade)
-    trade = re.sub(r"\s+", " ", trade)
-
-    return trade.strip()
+    return trade.strip().lower()
 
 
 def _extract_trade_names(required_trades):
     trade_names = []
 
     for trade_info in required_trades or []:
+
         if isinstance(trade_info, dict):
-            trade = trade_info.get("trade", "")
+            trade = trade_info.get(
+                "trade",
+                ""
+            )
         else:
             trade = str(trade_info)
 
-        trade = _normalise_trade(trade)
-
-        if trade and trade not in trade_names:
-            trade_names.append(trade)
-
-    return trade_names
-
-
-def _trade_matches(provider_trade, requested_trades):
-    """
-    Allow minor label variations without requiring exact
-    string equality.
-
-    This deliberately avoids using broad semantic guesses:
-    a provider still needs a recognisable match to a requested
-    service.
-    """
-    provider_trade = _normalise_trade(provider_trade)
-
-    if not provider_trade:
-        return False
-
-    for requested_trade in requested_trades:
-        requested_trade = _normalise_trade(requested_trade)
-
-        if not requested_trade:
-            continue
-
-        if provider_trade == requested_trade:
-            return True
-
-        # Handle labels such as "photographer" and
-        # "photography services" without requiring exact equality.
-        if (
-            provider_trade in requested_trade
-            or requested_trade in provider_trade
-        ):
-            return True
-
-        provider_words = set(provider_trade.split())
-        requested_words = set(requested_trade.split())
-
-        if not provider_words or not requested_words:
-            continue
-
-        overlap = provider_words & requested_words
-
-        # Require all words in the shorter label to match.
-        # This handles "garden maintenance" versus
-        # "garden maintenance services", but not unrelated
-        # providers sharing only a generic word like "services".
-        shorter = min(
-            len(provider_words),
-            len(requested_words),
+        trade = _normalise_trade(
+            trade
         )
 
-        if shorter and len(overlap) == shorter:
-            return True
+        if (
+            trade
+            and trade not in trade_names
+        ):
+            trade_names.append(
+                trade
+            )
 
-    return False
+    return trade_names
 
 
 def _safe_string(value):
@@ -2416,7 +2473,7 @@ def _safe_float(value):
 
     try:
         value = float(value)
-    except (TypeError, ValueError, OverflowError):
+    except (TypeError, ValueError):
         return None
 
     if value < 0 or value > 5:
@@ -2431,7 +2488,7 @@ def _safe_int(value):
 
     try:
         value = int(value)
-    except (TypeError, ValueError, OverflowError):
+    except (TypeError, ValueError):
         return None
 
     if value < 0:
@@ -2461,35 +2518,40 @@ PLACEHOLDER_EMAIL_LOCAL_PARTS = {
 
 
 def _normalise_email(value):
-    value = _safe_string(value)
+    value = _safe_string(
+        value
+    )
 
     if not value:
         return None
 
-    value = unescape(value).strip()
-    value = re.sub(r"^mailto:", "", value, flags=re.IGNORECASE)
-    value = value.strip(" <>\"'()[]{}")
+    value = unescape(
+        value
+    ).strip()
 
-    match = EMAIL_PATTERN.search(value)
+    value = value.replace(
+        "mailto:",
+        "",
+        1
+    )
+
+    value = value.strip(
+        " <>\"'()[]{}"
+    )
+
+    match = EMAIL_PATTERN.search(
+        value
+    )
 
     if not match:
         return None
 
     email = match.group(0).lower()
 
-    if ".." in email:
-        return None
-
-    local_part, separator, domain = email.rpartition("@")
-
     if (
-        not separator
-        or not local_part
-        or not domain
-        or local_part.startswith(".")
-        or local_part.endswith(".")
-        or domain.startswith(".")
-        or domain.endswith(".")
+        ".." in email
+        or email.startswith(".")
+        or email.endswith(".")
     ):
         return None
 
@@ -2497,23 +2559,28 @@ def _normalise_email(value):
 
 
 def _is_valid_public_email(email):
-    email = _normalise_email(email)
+    email = _normalise_email(
+        email
+    )
 
     if not email:
         return False
 
-    local_part, separator, domain = email.rpartition("@")
+    local_part, separator, domain = (
+        email.rpartition("@")
+    )
 
-    if not separator or not local_part or not domain:
+    if (
+        not separator
+        or not local_part
+        or not domain
+    ):
         return False
 
     if domain in PLACEHOLDER_EMAIL_DOMAINS:
         return False
 
     if local_part in PLACEHOLDER_EMAIL_LOCAL_PARTS:
-        return False
-
-    if ".." in domain or ".." in local_part:
         return False
 
     return True
@@ -2524,24 +2591,43 @@ def _is_valid_public_email(email):
 # ============================================================
 
 def _normalise_phone(value):
-    value = _safe_string(value)
+    value = _safe_string(
+        value
+    )
 
     if not value:
         return None
 
-    value = unescape(value).strip()
+    value = unescape(
+        value
+    ).strip()
 
     value = re.sub(
         r"^(tel:|phone:|telephone:)\s*",
         "",
         value,
-        flags=re.IGNORECASE,
+        flags=re.IGNORECASE
     )
 
-    cleaned = re.sub(r"[^\d+().\-\s]", "", value)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(
+        r"[^\d+().\-\s]",
+        "",
+        value
+    )
 
-    digit_count = len(re.sub(r"\D", "", cleaned))
+    cleaned = re.sub(
+        r"\s+",
+        " ",
+        cleaned
+    ).strip()
+
+    digit_count = len(
+        re.sub(
+            r"\D",
+            "",
+            cleaned
+        )
+    )
 
     if digit_count < 7:
         return None
@@ -2554,22 +2640,70 @@ def _normalise_phone(value):
 # ============================================================
 
 def _is_public_hostname(hostname):
-    """
-    Reject hostnames that resolve to any non-global IP address.
-
-    This checks every returned DNS address rather than checking
-    only selected private-network prefixes.
-    """
-    if not hostname or not isinstance(hostname, str):
+    if not hostname:
         return False
 
-    hostname = hostname.strip().lower().rstrip(".")
-
-    if not hostname or len(hostname) > 253:
+    try:
+        hostname = hostname.strip().lower()
+    except Exception:
         return False
 
-    if any(character.isspace() for character in hostname):
+    if not hostname:
         return False
+
+    if len(hostname) > 253:
+        return False
+
+    if any(
+        character.isspace()
+        for character in hostname
+    ):
+        return False
+
+    if hostname.startswith(".") or hostname.endswith("."):
+        return False
+
+    labels = hostname.rstrip(".").split(".")
+
+    if not labels:
+        return False
+
+    for label in labels:
+
+        if not label:
+            return False
+
+        if len(label) > 63:
+            return False
+
+        if (
+            label.startswith("-")
+            or label.endswith("-")
+        ):
+            return False
+
+        try:
+            ascii_label = label.encode(
+                "idna"
+            ).decode(
+                "ascii"
+            )
+        except (
+            UnicodeError,
+            UnicodeEncodeError,
+            UnicodeDecodeError,
+            ValueError
+        ):
+            return False
+
+        if len(ascii_label) > 63:
+            return False
+
+        if not re.fullmatch(
+            r"[A-Za-z0-9-]+",
+            ascii_label
+        ):
+            return False
 
     if hostname in {
         "localhost",
@@ -2577,164 +2711,240 @@ def _is_public_hostname(hostname):
     }:
         return False
 
-    # Reject IP literals unless they are globally routable.
-    try:
-        address = ipaddress.ip_address(hostname)
-
-        return address.is_global
-
-    except ValueError:
-        pass
-
-    labels = hostname.split(".")
-
-    if len(labels) < 2:
-        return False
-
-    for label in labels:
-        if (
-            not label
-            or len(label) > 63
-            or label.startswith("-")
-            or label.endswith("-")
-        ):
-            return False
-
-        try:
-            ascii_label = label.encode("idna").decode("ascii")
-        except (UnicodeError, ValueError):
-            return False
-
-        if not re.fullmatch(r"[A-Za-z0-9-]+", ascii_label):
-            return False
-
     try:
         addresses = socket.getaddrinfo(
             hostname,
-            None,
-            type=socket.SOCK_STREAM,
+            None
         )
-    except (socket.gaierror, UnicodeError, ValueError, OSError):
+    except (
+        socket.gaierror,
+        UnicodeError,
+        ValueError,
+        OSError
+    ):
         return False
 
-    resolved_ips = set()
+    for address in addresses:
 
-    for address_info in addresses:
-        ip_text = address_info[4][0]
+        ip = address[4][0]
 
         try:
-            ip_address = ipaddress.ip_address(ip_text)
-        except ValueError:
-            return False
 
-        # Reject the entire hostname if any resolved address is
-        # private, reserved, loopback, link-local, or otherwise
-        # not globally routable.
-        if not ip_address.is_global:
-            return False
+            socket.inet_pton(
+                socket.AF_INET,
+                ip
+            )
 
-        resolved_ips.add(str(ip_address))
+            first_octet = int(
+                ip.split(".")[0]
+            )
 
-    return bool(resolved_ips)
+            second_octet = int(
+                ip.split(".")[1]
+            )
+
+            if (
+                first_octet == 10
+                or (
+                    first_octet == 172
+                    and 16 <= second_octet <= 31
+                )
+                or (
+                    first_octet == 192
+                    and second_octet == 168
+                )
+                or first_octet == 127
+            ):
+                return False
+
+        except OSError:
+
+            try:
+
+                socket.inet_pton(
+                    socket.AF_INET6,
+                    ip
+                )
+
+                if (
+                    ip.lower() == "::1"
+                    or ip.lower().startswith("fe80:")
+                    or ip.lower().startswith("fc")
+                    or ip.lower().startswith("fd")
+                ):
+                    return False
+
+            except OSError:
+                continue
+
+    return True
 
 
 def _normalise_url(url):
-    url = _safe_string(url)
+    url = _safe_string(
+        url
+    )
 
     if not url:
         return None
 
-    # Avoid logging the entire value: malformed Gemini output
-    # can contain enormous repeated strings.
-    if any(character.isspace() for character in url):
+    if any(
+        character.isspace()
+        for character in url
+    ):
         print(
-            "[external search] rejected website containing whitespace",
-            flush=True,
+            "[external search] rejected malformed website "
+            f"containing whitespace: {url!r}",
+            flush=True
         )
+
         return None
 
     if len(url) > 2048:
         print(
-            "[external search] rejected oversized website value: "
-            f"length={len(url)}",
-            flush=True,
+            "[external search] rejected oversized website "
+            f"value: length={len(url)}",
+            flush=True
         )
+
         return None
 
-    if not url.startswith(("http://", "https://")):
+    if not url.startswith(
+        ("http://", "https://")
+    ):
         url = "https://" + url
 
     try:
-        parsed = urlparse(url)
-        hostname = parsed.hostname
-        port = parsed.port
-    except (ValueError, UnicodeError):
+        parsed = urlparse(
+            url
+        )
+    except (
+        ValueError,
+        UnicodeError
+    ) as exc:
+
+        print(
+            "[external search] rejected malformed website URL: "
+            f"url={url!r}, error={exc!r}",
+            flush=True
+        )
+
         return None
 
-    if parsed.scheme.lower() not in {"http", "https"}:
+    if parsed.scheme not in {
+        "http",
+        "https",
+    }:
+        return None
+
+    try:
+        hostname = parsed.hostname
+    except (
+        ValueError,
+        UnicodeError
+    ) as exc:
+
+        print(
+            "[external search] rejected invalid hostname: "
+            f"url={url!r}, error={exc!r}",
+            flush=True
+        )
+
         return None
 
     if not hostname:
         return None
 
-    # Do not allow embedded credentials in URLs.
-    if parsed.username is not None or parsed.password is not None:
-        return None
-
-    if port is not None and not (1 <= port <= 65535):
-        return None
-
-    if not _is_public_hostname(hostname):
+    if not _is_public_hostname(
+        hostname
+    ):
         print(
-            "[external search] rejected invalid or non-public "
+            "[external search] rejected invalid/private "
             f"website hostname: {hostname!r}",
-            flush=True,
+            flush=True
         )
+
         return None
 
     return url
 
 
 def _is_valid_business_website(url):
-    url = _normalise_url(url)
+    url = _normalise_url(
+        url
+    )
 
     if not url:
         return None
 
     try:
-        parsed = urlparse(url)
-    except (ValueError, UnicodeError):
+        parsed = urlparse(
+            url
+        )
+    except (
+        ValueError,
+        UnicodeError
+    ):
         return None
 
     path = parsed.path.lower()
 
-    # Some search results contain broken paths such as
-    # /contact-1-1-1-1-1. Keep the domain and discard the path.
-    if re.search(r"(?:-\d+){3,}", path):
+    # Search grounding sometimes returns mangled deep links such as
+    # /contact-1-1-1-1-1. Keep the verified domain but use its homepage
+    # instead of exposing that unusable path as the business website.
+    repeated_number_suffixes = re.search(
+        r"(?:-\d+){3,}",
+        path
+    )
+
+    if repeated_number_suffixes:
         homepage = urlunparse((
             parsed.scheme,
             parsed.netloc,
             "/",
             "",
             "",
-            "",
+            ""
         ))
 
         print(
-            "[external search] replaced malformed website path "
-            "with homepage",
-            flush=True,
+            "[external search] replaced malformed repeated website path "
+            f"with domain homepage: {url!r} -> {homepage!r}",
+            flush=True
         )
 
         return homepage
 
     rejected_extensions = (
-        ".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg",
-        ".ico", ".bmp", ".avif", ".pdf", ".doc", ".docx",
-        ".xls", ".xlsx", ".zip", ".mp4", ".mp3", ".wav",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".svg",
+        ".ico",
+        ".bmp",
+        ".avif",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".zip",
+        ".mp4",
+        ".mp3",
+        ".wav",
     )
 
-    if path.endswith(rejected_extensions):
+    if path.endswith(
+        rejected_extensions
+    ):
+        print(
+            "[external search] rejected non-website URL: "
+            f"{url!r}",
+            flush=True
+        )
+
         return None
 
     rejected_path_fragments = (
@@ -2750,7 +2960,16 @@ def _is_valid_business_website(url):
         "/media/",
     )
 
-    if any(fragment in path for fragment in rejected_path_fragments):
+    if any(
+        fragment in path
+        for fragment in rejected_path_fragments
+    ):
+        print(
+            "[external search] rejected asset URL: "
+            f"{url!r}",
+            flush=True
+        )
+
         return None
 
     return url
@@ -2760,82 +2979,38 @@ def _is_valid_business_website(url):
 # WEBSITE FETCHING
 # ============================================================
 
-class _SafeRedirectHandler(HTTPRedirectHandler):
-    """
-    Validate each redirect destination before urllib follows it.
-
-    This reduces redirect-based SSRF risk. It does not provide
-    a complete defence against DNS rebinding between validation
-    and the actual network connection.
-    """
-
-    def redirect_request(
-        self,
-        req,
-        fp,
-        code,
-        msg,
-        headers,
-        newurl,
-    ):
-        destination = urljoin(req.full_url, newurl)
-        validated = _is_valid_business_website(destination)
-
-        if not validated:
-            raise HTTPError(
-                req.full_url,
-                code=403,
-                msg="Rejected unsafe redirect destination",
-                hdrs=headers,
-                fp=fp,
-            )
-
-        return super().redirect_request(
-            req,
-            fp,
-            code,
-            msg,
-            headers,
-            validated,
-        )
-
-
 def _fetch_web_page(url):
-    url = _is_valid_business_website(url)
+    url = _is_valid_business_website(
+        url
+    )
 
     if not url:
         return None
 
     try:
+
         request = Request(
             url,
             headers={
                 "User-Agent": USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml",
-            },
+                "Accept": (
+                    "text/html,"
+                    "application/xhtml+xml"
+                ),
+            }
         )
 
-        opener = build_opener(_SafeRedirectHandler())
-
-        with opener.open(
+        with urlopen(
             request,
-            timeout=REQUEST_TIMEOUT,
+            timeout=REQUEST_TIMEOUT
         ) as response:
-            # Validate the final URL as an additional check.
-            final_url = response.geturl()
 
-            if not _is_valid_business_website(final_url):
-                print(
-                    "[external search] rejected final website URL "
-                    "after redirect",
-                    flush=True,
-                )
-                return None
-
-            content_type = response.headers.get(
-                "Content-Type",
-                "",
-            ).lower()
+            content_type = (
+                response.headers.get(
+                    "Content-Type",
+                    ""
+                ).lower()
+            )
 
             if (
                 "text/html" not in content_type
@@ -2843,21 +3018,28 @@ def _fetch_web_page(url):
             ):
                 return None
 
-            data = response.read(MAX_PAGE_BYTES)
+            data = response.read(
+                MAX_PAGE_BYTES
+            )
 
             charset = (
                 response.headers.get_content_charset()
                 or "utf-8"
             )
 
-            return data.decode(charset, errors="ignore")
+            return data.decode(
+                charset,
+                errors="ignore"
+            )
 
     except Exception as exc:
+
         print(
             "[external search] website fetch failed: "
-            f"error={type(exc).__name__}",
-            flush=True,
+            f"url={url!r}, error={exc!r}",
+            flush=True
         )
+
         return None
 
 
@@ -2865,120 +3047,210 @@ def _extract_emails_from_html(html):
     if not html:
         return []
 
-    html = unescape(html)
+    html = unescape(
+        html
+    )
+
     found = []
 
-    for match in EMAIL_PATTERN.findall(html):
-        email = _normalise_email(match)
+    for match in EMAIL_PATTERN.findall(
+        html
+    ):
 
-        if email and email not in found:
-            found.append(email)
+        email = _normalise_email(
+            match
+        )
+
+        if (
+            email
+            and email not in found
+        ):
+            found.append(
+                email
+            )
 
     mailto_pattern = re.compile(
         r"mailto:\s*([^\"'\s?<>]+)",
-        re.IGNORECASE,
+        re.IGNORECASE
     )
 
-    for match in mailto_pattern.findall(html):
-        email = _normalise_email(match)
+    for match in mailto_pattern.findall(
+        html
+    ):
 
-        if email and email not in found:
-            found.append(email)
+        email = _normalise_email(
+            match
+        )
 
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = unescape(text)
+        if (
+            email
+            and email not in found
+        ):
+            found.append(
+                email
+            )
+
+    text = re.sub(
+        r"<[^>]+>",
+        " ",
+        html
+    )
+
+    text = unescape(
+        text
+    )
 
     obfuscated_patterns = [
+
         re.compile(
             r"\b([A-Z0-9._%+\-]+)\s*"
             r"(?:\[at\]|\(at\)|\{at\}|\bat\b)\s*"
             r"([A-Z0-9.\-]+\.[A-Z]{2,})\b",
-            re.IGNORECASE,
+            re.IGNORECASE
         ),
+
         re.compile(
             r"\b([A-Z0-9._%+\-]+)\s*"
             r"(?:\[at\]|\(at\)|\{at\})\s*"
             r"([A-Z0-9.\-]+\.[A-Z]{2,})\b",
-            re.IGNORECASE,
+            re.IGNORECASE
         ),
     ]
 
     for pattern in obfuscated_patterns:
-        for match in pattern.findall(text):
-            email = _normalise_email(
+
+        for match in pattern.findall(
+            text
+        ):
+
+            email = (
                 f"{match[0]}@{match[1]}"
             )
 
-            if email and email not in found:
-                found.append(email)
+            email = _normalise_email(
+                email
+            )
 
-    return [
-        email
-        for email in found
-        if _is_valid_public_email(email)
-    ]
+            if (
+                email
+                and email not in found
+            ):
+                found.append(
+                    email
+                )
+
+    return found
 
 
 def _extract_phones_from_html(html):
     if not html:
         return []
 
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = unescape(text)
+    text = re.sub(
+        r"<[^>]+>",
+        " ",
+        html
+    )
+
+    text = unescape(
+        text
+    )
 
     patterns = [
+
         re.compile(
             r"(?:\+44\s?\(?0?\)?|0)"
             r"(?:\s?\(?\d{2,4}\)?){2,4}"
             r"(?:\s?\d{2,4})?"
         ),
+
         re.compile(
-            r"\+\d{1,3}(?:[\s().-]?\d){7,14}"
+            r"\+\d{1,3}"
+            r"(?:[\s().-]?\d){7,14}"
         ),
     ]
 
     found = []
 
     for pattern in patterns:
-        for match in pattern.findall(text):
-            phone = _normalise_phone(match)
 
-            if phone and phone not in found:
-                found.append(phone)
+        for match in pattern.findall(
+            text
+        ):
+
+            phone = _normalise_phone(
+                match
+            )
+
+            if (
+                phone
+                and phone not in found
+            ):
+                found.append(
+                    phone
+                )
 
     return found
 
 
-def _verify_website_details(provider, website):
+def _verify_website_details(
+    provider,
+    website
+):
     result = {
         "email": None,
         "phone": None,
     }
 
-    website = _is_valid_business_website(website)
+    website = _is_valid_business_website(
+        website
+    )
 
     if not website:
         return result
 
-    html = _fetch_web_page(website)
+    print(
+        "[external search] verifying exact website: "
+        f"{website!r}",
+        flush=True
+    )
+
+    html = _fetch_web_page(
+        website
+    )
 
     if not html:
         return result
 
-    emails = _extract_emails_from_html(html)
-    phones = _extract_phones_from_html(html)
+    emails = _extract_emails_from_html(
+        html
+    )
+
+    phones = _extract_phones_from_html(
+        html
+    )
 
     if emails:
+
         result["email"] = emails[0]
 
         print(
-            "[external search] found email on website: "
-            f"name={provider.get('name')!r}",
-            flush=True,
+            "[external search] verified website email: "
+            f"name={provider.get('name')!r}, "
+            f"email={emails[0]!r}",
+            flush=True
         )
 
     if phones:
+
         result["phone"] = phones[0]
+
+        print(
+            "[external search] verified website phone: "
+            f"name={provider.get('name')!r}, "
+            f"phone={phones[0]!r}",
+            flush=True
+        )
 
     return result
 
@@ -2996,16 +3268,19 @@ def _verify_provider_website(provider):
         }
 
     try:
+
         verified = _verify_website_details(
             provider=provider,
-            website=website,
+            website=website
         )
+
     except Exception as exc:
+
         print(
-            "[external search] website verification failed: "
-            f"name={provider.get('name')!r}, "
-            f"error={type(exc).__name__}",
-            flush=True,
+            "[external search] parallel website verification "
+            f"failed: name={provider.get('name')!r}, "
+            f"website={website!r}, error={exc!r}",
+            flush=True
         )
 
         return {
@@ -3034,57 +3309,83 @@ def _verify_provider_websites_parallel(providers):
     website_indexes = []
 
     for index, provider in enumerate(providers):
-        if not isinstance(provider, dict):
+
+        if not isinstance(
+            provider,
+            dict
+        ):
             continue
 
-        if _is_valid_business_website(provider.get("website")):
-            website_indexes.append(index)
+        website = _is_valid_business_website(
+            provider.get("website")
+        )
+
+        if website:
+            website_indexes.append(
+                index
+            )
 
     if not website_indexes:
         return results
 
     print(
-        "[external search] starting parallel website verification: "
-        f"{len(website_indexes)} websites",
-        flush=True,
+        "[external search] starting parallel website "
+        f"verification: "
+        f"{len(website_indexes)} websites, "
+        f"max_workers={MAX_PARALLEL_WEBSITE_CHECKS}",
+        flush=True
     )
 
     with ThreadPoolExecutor(
         max_workers=MAX_PARALLEL_WEBSITE_CHECKS
     ) as executor:
+
         futures = {
             executor.submit(
                 _verify_provider_website,
-                providers[index],
+                providers[index]
             ): index
             for index in website_indexes
         }
 
-        for future in as_completed(futures):
-            index = futures[future]
+        for future in as_completed(
+            futures
+        ):
+
+            index = futures[
+                future
+            ]
 
             try:
-                results[index] = future.result()
+
+                results[index] = (
+                    future.result()
+                )
+
             except Exception as exc:
+
                 provider = providers[index]
 
                 print(
-                    "[external search] unexpected website "
+                    "[external search] unexpected parallel "
                     "verification error: "
                     f"name={provider.get('name')!r}, "
-                    f"error={type(exc).__name__}",
-                    flush=True,
+                    f"error={exc!r}",
+                    flush=True
                 )
 
                 results[index] = {
-                    "website": None,
+                    "website": _is_valid_business_website(
+                        provider.get("website")
+                    ),
                     "email": None,
                     "phone": None,
                 }
 
     print(
-        "[external search] parallel website verification complete",
-        flush=True,
+        "[external search] parallel website verification "
+        "complete",
+        flush=True
     )
 
     return results
@@ -3095,51 +3396,126 @@ def _verify_provider_websites_parallel(providers):
 # ============================================================
 
 def _location_search_tiers(location):
-    location = _safe_string(location)
+    """
+    Progressively expand geographically.
+
+    IMPORTANT:
+    The search should expand geographically from the target
+    place rather than jumping directly to large cities.
+
+    Order:
+
+    1. Exact target place
+    2. Immediately surrounding places
+    3. Wider surrounding region
+    4. Wider service area
+    """
+
+    location = _safe_string(
+        location
+    )
 
     if not location:
-        location = "the requested service area"
+        location = "the property's local area"
 
     return [
+
         (
             "main_place",
             f"""
-Search primarily in the exact target place:
+Search primarily in the EXACT target place:
 
 {location}
 
-Prioritise businesses located in this place or clearly
-advertising that they serve it. Do not jump straight to
-distant cities.
-""",
+This is the first and most important geographic search.
+
+Prioritise businesses physically located in {location}
+or businesses that clearly and explicitly serve {location}.
+
+Search the actual local area thoroughly.
+
+Do NOT broaden to distant cities.
+
+Do NOT prioritise large cities simply because they have
+more businesses or better indexed search results.
+
+If {location} is a town or smaller city, search that town
+itself rather than replacing it with the nearest major city.
+"""
         ),
+
         (
             "surrounding_areas",
             f"""
 The exact target place did not provide enough qualifying
-providers. Expand into nearby towns, villages, suburbs and
-communities around {location}. Prefer geographically close
-businesses and providers that explicitly serve {location}.
-""",
+contractors.
+
+Now expand ONLY into the areas immediately surrounding:
+
+{location}
+
+Search nearby towns, villages, suburbs, districts and
+communities that are geographically close to {location}.
+
+The purpose of this tier is to find contractors in the
+local surrounding area.
+
+Do NOT jump directly to major cities such as London,
+Birmingham, Cambridge or other distant cities.
+
+Prefer smaller nearby places over distant large cities.
+
+A business should preferably either be physically located
+near {location} or explicitly state that it serves {location}.
+"""
         ),
+
         (
             "wider_local_region",
             f"""
-The target place and immediate surroundings did not provide
-enough qualifying providers. Search the wider local region
-around {location}, continuing to prioritise proximity and
-evidence that the provider serves the target place.
-""",
+The exact target place and immediately surrounding areas
+did not provide enough qualifying contractors.
+
+Now expand to the wider LOCAL REGION around:
+
+{location}
+
+Search additional nearby towns, villages and communities
+within the surrounding county or local service area.
+
+Continue prioritising geographically close businesses.
+
+Do NOT favour a major city simply because it has more search
+results.
+
+A contractor farther away should preferably have explicit
+evidence that it serves {location}.
+"""
         ),
+
         (
             "wider_service_area",
             f"""
-The closer geographic tiers did not provide enough
-qualifying providers. Search a wider reasonable service area
-around {location}. Prefer providers that explicitly serve
-the target place. Do not assume that a distant business
-serves it merely because it is in the same broad region.
-""",
+The main place, surrounding areas and wider local region
+did not provide enough qualifying contractors.
+
+Now search a wider reasonable contractor service area around:
+
+{location}
+
+Only use this wider tier to fill the remaining requirement.
+
+Prefer contractors that explicitly state that they serve
+{location}.
+
+Geographic distance still matters.
+
+Do not assume that a contractor in a major city serves
+{location} merely because it is in the same broad region.
+
+A distant business without evidence that it serves
+{location} should not be preferred over a closer business.
+"""
         ),
     ]
 
@@ -3153,44 +3529,75 @@ def _build_discovery_prompt(
     location_instruction,
     excluded_businesses,
     batch_number,
-    retry=False,
+    retry=False
 ):
     excluded_text = ""
 
     if excluded_businesses:
-        excluded_names = list(excluded_businesses)[:100]
+
+        excluded_names = list(
+            excluded_businesses
+        )[:100]
 
         excluded_text = (
-            "\nProviders already qualified; do not return them again:\n"
-            + "\n".join(f"- {name}" for name in excluded_names)
+            "\n\nBusinesses already found. "
+            "Do NOT return these again:\n"
+            + "\n".join(
+                f"- {name}"
+                for name in excluded_names
+            )
         )
 
     retry_instruction = ""
 
     if retry:
         retry_instruction = """
-The previous response was not valid JSON.
-Return complete, valid JSON only. Do not use markdown fences,
-comments, explanations or repeated URL text.
+IMPORTANT:
+The previous response could not be parsed as valid JSON.
+Return the response again as COMPLETE valid JSON.
+Do not truncate any strings.
+Do not include markdown fences.
+Do not include explanations before or after the JSON.
 """
 
     return f"""
-Find real businesses that provide the following services:
+Find real businesses that provide these property
+maintenance services:
 
-Requested services: {trades_text}
+Trades: {trades_text}
 
-Target location: follow these geographic instructions:
 {location_instruction}
 
-Use Google Search grounding and current public web information.
-This is discovery batch {batch_number}.
+Use Google Search grounding and current public web
+information.
 
-Return up to {MAX_PROVIDERS_PER_BATCH} strong candidates.
-Return fewer if there are not enough credible matches.
+This is search batch {batch_number}.
+
+We ultimately need up to 20 qualifying contractors with
+publicly verifiable business email addresses.
+
+Return a LARGE pool of strong candidates in this batch,
+preferably around 15-20 businesses.
 
 {excluded_text}
 
 {retry_instruction}
+
+IMPORTANT GEOGRAPHIC RULES:
+
+- Follow the geographic tier described above exactly.
+- Do not jump ahead to a broader geographic tier.
+- Do not replace a smaller target town with a nearby major
+  city.
+- Search smaller surrounding towns and villages where
+  appropriate.
+- Geographic proximity matters.
+- Only use distant businesses when the current geographic
+  tier genuinely does not provide enough candidates.
+- Do not assume a business serves the target place merely
+  because it is in the same broad region.
+- Prefer explicit evidence that the business serves the
+  target place.
 
 Return ONLY JSON in this format:
 
@@ -3198,52 +3605,99 @@ Return ONLY JSON in this format:
   "providers": [
     {{
       "name": "Business name",
-      "trade": "Requested service the business provides",
-      "location": "Business location or null",
+      "trade": "trade",
+      "location": "verified location or null",
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
-      "website": "https://business-domain.co.uk",
+      "website": "https://business-homepage.co.uk",
       "phone": "01234567890",
-      "email": "info@business-domain.co.uk",
-      "source_url": "https://source-page.example"
+      "email": "info@business.co.uk",
+      "source_url": "https://real-source-page.co.uk"
     }}
   ]
 }}
 
 Rules:
-- Only return real businesses supported by search evidence.
-- Never invent businesses, contact details, ratings or review counts.
-- Use null for fields that cannot be established.
-- Return the business's actual homepage URL, not a contact-page URL.
-- The website must be a real website, not an image or downloadable file.
-- Never construct a website URL from the business name.
-- Return only a publicly listed business email when one is found.
-- Return a phone number only when supported by public evidence.
-- Return a location only when supported by public evidence.
-- Return a rating and review count only when supported by evidence.
-- source_url must be an actual source URL from search evidence.
-- Prefer the official business website.
-- Providers must be relevant to the requested services.
-- Follow the geographic tier instructions; do not jump ahead.
-- Do not return providers already listed above.
-- Each business should appear only once.
-- Keep each field concise. Website fields must contain one URL only.
-- Do not append explanations, labels or validation notes to URLs.
-- Return valid JSON only, without markdown.
+
+1. Only return real businesses supported by search
+   evidence.
+
+2. Never invent a business.
+
+3. Never guess any field.
+
+4. If a field cannot be verified, return null.
+
+5. The website must be the actual business homepage: return only the
+   site's root URL (scheme and domain, with no contact or other page path).
+
+6. The website must NOT be an image.
+
+7. The website must NOT be a file or uploaded asset.
+
+8. Never return URLs ending in .jpg .jpeg .png .webp
+   .gif .svg .pdf or similar file extensions.
+
+9. Never return URLs containing /wp-content/uploads/.
+
+10. Do not construct a website from the business name.
+
+11. Do not construct contact URLs.
+
+12. The phone number must be an actual publicly listed
+    business phone number.
+
+13. The email must be an actual publicly listed
+    business email.
+
+14. The location must be supported by search evidence.
+
+15. The rating and review count must be supported by
+    search evidence.
+
+16. source_url must be an actual URL from the search
+    evidence.
+
+17. Prefer the official business website when available.
+
+18. Only return businesses relevant to the requested
+    trades.
+
+19. Strongly prioritise geographic proximity to the
+    target property.
+
+20. Prefer businesses that explicitly state they serve
+    the target location.
+
+21. Do not return businesses already listed above.
+
+22. A business must appear only once.
+
+23. Missing information must be null.
+
+24. Do not output explanations.
+
+25. Do not output markdown.
 """
 
 
-def _request_gemini_provider_batch(client, prompt):
+def _request_gemini_provider_batch(
+    client,
+    prompt
+):
     try:
+
         response = client.interactions.create(
             model=os.getenv(
                 "GEMINI_MODEL",
-                "gemini-3.6-flash",
+                "gemini-3.6-flash"
             ),
             input=prompt,
             tools=[
-                {"type": "google_search"},
+                {
+                    "type": "google_search"
+                }
             ],
             response_format={
                 "type": "text",
@@ -3256,90 +3710,181 @@ def _request_gemini_provider_batch(client, prompt):
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "name": {"type": "string"},
-                                    "trade": {"type": "string"},
+
+                                    "name": {
+                                        "type": "string"
+                                    },
+
+                                    "trade": {
+                                        "type": "string"
+                                    },
+
                                     "location": {
-                                        "type": ["string", "null"],
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
                                     },
+
                                     "rating": {
-                                        "type": ["number", "null"],
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ]
                                     },
+
                                     "review_count": {
-                                        "type": ["integer", "null"],
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ]
                                     },
+
                                     "availability": {
-                                        "type": ["string", "null"],
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
                                     },
+
                                     "website": {
-                                        "type": ["string", "null"],
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
                                     },
+
                                     "phone": {
-                                        "type": ["string", "null"],
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
                                     },
+
                                     "email": {
-                                        "type": ["string", "null"],
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
                                     },
+
                                     "source_url": {
-                                        "type": ["string", "null"],
-                                    },
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
+                                    }
                                 },
-                                "required": ["name", "trade"],
-                            },
-                        },
+
+                                "required": [
+                                    "name",
+                                    "trade"
+                                ]
+                            }
+                        }
                     },
-                    "required": ["providers"],
-                },
+
+                    "required": [
+                        "providers"
+                    ]
+                }
             },
+
             generation_config={
                 "thinking_level": "low",
-                "max_output_tokens": 8192,
-            },
+                "max_output_tokens": 8192
+            }
         )
 
     except Exception as exc:
+
         print(
-            "[external search] Gemini discovery request failed: "
-            f"{type(exc).__name__}: {str(exc)[:300]}",
-            flush=True,
+            "[external search] Gemini discovery error: "
+            f"{exc!r}",
+            flush=True
         )
 
         raise RuntimeError(
             f"Gemini provider search failed: {exc}"
         ) from exc
 
+    try:
+
+        response_debug = response.model_dump(
+            exclude_none=True
+        )
+
+    except AttributeError:
+
+        response_debug = repr(
+            response
+        )
+
+    print(
+        "[external search] Gemini structured response: "
+        f"{response_debug!r}",
+        flush=True
+    )
+
+    raw_output = getattr(
+        response,
+        "output_text",
+        None
+    )
+
+    print(
+        "[external search] Gemini raw output_text: "
+        f"{raw_output!r}",
+        flush=True
+    )
+
     output = _clean_json_response(
-        getattr(response, "output_text", None)
+        raw_output
+    )
+
+    print(
+        "[external search] Gemini cleaned output_text: "
+        f"{output!r}",
+        flush=True
     )
 
     if not output:
+
         print(
             "[external search] Gemini returned an empty response",
-            flush=True,
+            flush=True
         )
+
         return []
 
-    data = _parse_provider_json(output)
+    data = _parse_provider_json(
+        output
+    )
 
     if data is None:
-        # Log only diagnostic metadata, not the potentially enormous
-        # response body containing malformed repeated URL strings.
-        print(
-            "[external search] Gemini response was not valid JSON: "
-            f"output_length={len(output)}",
-            flush=True,
+
+        raise ValueError(
+            "Gemini returned malformed provider JSON"
         )
-        raise ValueError("Gemini returned malformed provider JSON")
 
-    if not isinstance(data, dict):
+    if not isinstance(
+        data,
+        dict
+    ):
         return []
 
-    providers = data.get("providers", [])
+    providers = data.get(
+        "providers",
+        []
+    )
 
-    if not isinstance(providers, list):
+    if not isinstance(
+        providers,
+        list
+    ):
         return []
 
-    # Defend against unexpectedly large responses.
-    return providers[:MAX_PROVIDERS_PER_BATCH]
+    return providers
 
 
 def _discover_provider_batch(
@@ -3347,42 +3892,53 @@ def _discover_provider_batch(
     trades_text,
     location_instruction,
     excluded_businesses,
-    batch_number,
+    batch_number
 ):
-    for attempt in range(1, MAX_GEMINI_JSON_ATTEMPTS + 1):
+    for attempt in range(
+        1,
+        MAX_GEMINI_JSON_ATTEMPTS + 1
+    ):
+
+        retry = attempt > 1
+
         prompt = _build_discovery_prompt(
             trades_text=trades_text,
             location_instruction=location_instruction,
             excluded_businesses=excluded_businesses,
             batch_number=batch_number,
-            retry=attempt > 1,
+            retry=retry
         )
 
         try:
+
             providers = _request_gemini_provider_batch(
                 client=client,
-                prompt=prompt,
+                prompt=prompt
             )
 
             print(
-                "[external search] Gemini JSON parsed successfully: "
-                f"attempt={attempt}, providers={len(providers)}",
-                flush=True,
+                "[external search] Gemini JSON parsed "
+                f"successfully on attempt {attempt}",
+                flush=True
             )
 
             return providers
 
         except ValueError as exc:
+
             print(
-                "[external search] invalid Gemini JSON: "
-                f"attempt={attempt}/{MAX_GEMINI_JSON_ATTEMPTS}, "
-                f"error={str(exc)[:200]}",
-                flush=True,
+                "[external search] Gemini returned invalid "
+                f"provider JSON on attempt {attempt}/"
+                f"{MAX_GEMINI_JSON_ATTEMPTS}: "
+                f"{exc!r}",
+                flush=True
             )
 
             if attempt >= MAX_GEMINI_JSON_ATTEMPTS:
+
                 raise RuntimeError(
-                    "Gemini returned invalid provider JSON after retry"
+                    "Gemini returned invalid provider JSON "
+                    "after retry"
                 ) from exc
 
     return []
@@ -3398,65 +3954,106 @@ def search_external_workers(
     location=None,
     email_subject=None,
     email_html=None,
-    email_text_body=None,
+    email_text_body=None
 ):
     """
-    Discover up to TARGET_CONTRACTORS external providers.
+    Discover up to 20 qualifying external contractors.
 
-    The search expands geographically only when the current
-    tier does not yield enough qualifying candidates.
+    Geographic progression:
 
-    Existing candidate fields and email metadata attributes
-    are preserved for the calling workflow.
+    1. Main target place
+    2. Immediately surrounding towns/villages/areas
+    3. Wider local region
+    4. Wider service area
+
+    The next geographic tier is only searched when fewer
+    than 20 qualifying contractors have been found.
+
+    Contractors must have a valid public business email.
+
+    Emails are sent immediately after the contractor's
+    public email has been verified.
     """
-    if not maintenance_request_id:
-        raise ValueError("maintenance_request_id is required")
 
-    trade_names = _extract_trade_names(required_trades)
+    if not maintenance_request_id:
+        raise ValueError(
+            "maintenance_request_id is required"
+        )
+
+    trade_names = _extract_trade_names(
+        required_trades
+    )
 
     if not trade_names:
         return []
 
-    location_text = (
-        _safe_string(location)
-        or "the requested service area"
+    location_text = _safe_string(
+        location
     )
 
+    if not location_text:
+        location_text = (
+            "the property's local area"
+        )
+
     client = _get_gemini_client()
-    trades_text = ", ".join(trade_names)
-    location_tiers = _location_search_tiers(location_text)
+
+    trades_text = ", ".join(
+        trade_names
+    )
+
+    location_tiers = _location_search_tiers(
+        location_text
+    )
 
     candidates = []
 
-    # Only qualified candidates are excluded from future Gemini
-    # batches. Unqualified businesses can be encountered again.
     seen_businesses = set()
     seen_emails = set()
 
-    for tier_index, (tier_name, location_instruction) in enumerate(
+    for tier_index, (
+        tier_name,
+        location_instruction
+    ) in enumerate(
         location_tiers
     ):
+
         if len(candidates) >= TARGET_CONTRACTORS:
+
+            print(
+                "[external search] target already reached: "
+                f"{len(candidates)}/{TARGET_CONTRACTORS}",
+                flush=True
+            )
+
             break
 
         print(
             "[external search] starting geographic tier: "
-            f"{tier_name!r}, qualifying="
+            f"{tier_name!r}, "
+            f"current qualifying="
             f"{len(candidates)}/{TARGET_CONTRACTORS}",
-            flush=True,
+            flush=True
         )
 
-        tier_start_count = len(candidates)
+        tier_start_count = len(
+            candidates
+        )
 
-        # Two batches in each tier before broadening the search.
+        # Two batches within the CURRENT geographic tier
+        # before moving wider.
         for batch_number in range(1, 3):
+
             if len(candidates) >= TARGET_CONTRACTORS:
                 break
 
             print(
-                "[external search] requesting provider batch: "
-                f"tier={tier_name!r}, batch={batch_number}",
-                flush=True,
+                "[external search] requesting batch: "
+                f"tier={tier_name!r}, "
+                f"batch={batch_number}, "
+                f"current qualifying="
+                f"{len(candidates)}/{TARGET_CONTRACTORS}",
+                flush=True
             )
 
             providers = _discover_provider_batch(
@@ -3464,82 +4061,131 @@ def search_external_workers(
                 trades_text=trades_text,
                 location_instruction=location_instruction,
                 excluded_businesses=seen_businesses,
-                batch_number=batch_number,
+                batch_number=batch_number
             )
 
             print(
                 "[external search] providers returned: "
-                f"tier={tier_name!r}, batch={batch_number}, "
+                f"tier={tier_name!r}, "
+                f"batch={batch_number}, "
                 f"count={len(providers)}",
-                flush=True,
+                flush=True
             )
 
             prepared_providers = []
-            prepared_keys = []
 
             for provider in providers:
+
                 if len(candidates) >= TARGET_CONTRACTORS:
                     break
 
-                if not isinstance(provider, dict):
+                if not isinstance(
+                    provider,
+                    dict
+                ):
                     continue
 
-                name = _safe_string(provider.get("name"))
+                name = _safe_string(
+                    provider.get("name")
+                )
 
                 if not name:
                     continue
 
-                trade = _normalise_trade(provider.get("trade"))
+                trade = _normalise_trade(
+                    provider.get("trade")
+                )
 
-                if not _trade_matches(trade, trade_names):
-                    print(
-                        "[external search] rejected trade mismatch: "
-                        f"name={name!r}, trade={trade!r}",
-                        flush=True,
-                    )
+                if not trade:
                     continue
 
-                business_key = name.casefold()
+                if trade not in trade_names:
+
+                    print(
+                        "[external search] rejected provider: "
+                        f"trade mismatch name={name!r}, "
+                        f"trade={trade!r}",
+                        flush=True
+                    )
+
+                    continue
+
+                business_key = (
+                    name.lower(),
+                    trade
+                )
 
                 if business_key in seen_businesses:
+
+                    print(
+                        "[external search] rejected duplicate: "
+                        f"{name!r}",
+                        flush=True
+                    )
+
                     continue
 
-                prepared_providers.append(provider)
-                prepared_keys.append(business_key)
+                seen_businesses.add(
+                    business_key
+                )
+
+                prepared_providers.append(
+                    provider
+                )
 
             if not prepared_providers:
+
                 print(
-                    "[external search] no new usable providers in "
-                    f"tier={tier_name!r}, batch={batch_number}",
-                    flush=True,
+                    "[external search] no new usable providers "
+                    f"from tier={tier_name!r}, "
+                    f"batch={batch_number}",
+                    flush=True
                 )
+
                 continue
 
-            verification_results = _verify_provider_websites_parallel(
-                prepared_providers
+            verification_results = (
+                _verify_provider_websites_parallel(
+                    prepared_providers
+                )
             )
 
-            for index, provider in enumerate(prepared_providers):
+            for index, provider in enumerate(
+                prepared_providers
+            ):
+
                 if len(candidates) >= TARGET_CONTRACTORS:
                     break
 
-                name = _safe_string(provider.get("name"))
-                trade = _normalise_trade(provider.get("trade"))
+                name = _safe_string(
+                    provider.get("name")
+                )
+
+                trade = _normalise_trade(
+                    provider.get("trade")
+                )
 
                 location_value = _safe_string(
                     provider.get("location")
                 )
-                rating = _safe_float(provider.get("rating"))
+
+                rating = _safe_float(
+                    provider.get("rating")
+                )
+
                 review_count = _safe_int(
                     provider.get("review_count")
                 )
+
                 availability = _safe_string(
                     provider.get("availability")
                 )
 
                 verification = (
                     verification_results[index]
-                    if index < len(verification_results)
+                    if index < len(
+                        verification_results
+                    )
                     else {
                         "website": None,
                         "email": None,
@@ -3547,173 +4193,245 @@ def search_external_workers(
                     }
                 )
 
-                website = verification.get("website")
-
-                # Prefer details found directly on the provider's
-                # homepage. Preserve Gemini-supplied contact details
-                # as a fallback to avoid silently breaking the existing
-                # outbound workflow.
-                phone = (
-                    _normalise_phone(verification.get("phone"))
-                    or _normalise_phone(provider.get("phone"))
+                website = verification.get(
+                    "website"
                 )
 
-                email = (
-                    _normalise_email(verification.get("email"))
-                    or _normalise_email(provider.get("email"))
+                phone = _normalise_phone(
+                    provider.get("phone")
                 )
 
-                if not _is_valid_public_email(email):
+                email = _normalise_email(
+                    provider.get("email")
+                )
+
+                if verification.get("phone"):
+                    phone = verification[
+                        "phone"
+                    ]
+
+                if verification.get("email"):
+                    email = verification[
+                        "email"
+                    ]
+
+                if not _is_valid_public_email(
+                    email
+                ):
+
                     print(
-                        "[external search] rejected provider without "
-                        "a usable email: "
-                        f"name={name!r}",
-                        flush=True,
+                        "[external search] rejected contractor "
+                        "without valid public business email: "
+                        f"name={name!r}, "
+                        f"email={email!r}",
+                        flush=True
                     )
+
                     continue
 
                 if email in seen_emails:
+
                     print(
-                        "[external search] rejected duplicate email: "
-                        f"{email!r}",
-                        flush=True,
+                        "[external search] rejected duplicate "
+                        f"email: {email!r}",
+                        flush=True
                     )
+
                     continue
+
+                seen_emails.add(
+                    email
+                )
 
                 email_send_result = None
                 email_send_error = None
 
-                if email_subject and email_html:
+                if (
+                    email_subject
+                    and email_html
+                ):
+
                     print(
-                        "[contractor email] sending: "
-                        f"name={name!r}, email={email!r}",
-                        flush=True,
+                        "[contractor email] sending immediately: "
+                        f"name={name!r}, "
+                        f"email={email!r}",
+                        flush=True
                     )
 
                     try:
+
                         email_send_result = send_email(
                             to=email,
                             subject=email_subject,
-                            html=email_html,
+                            html=email_html
                         )
 
                         print(
-                            "[contractor email] send_email completed: "
-                            f"name={name!r}",
-                            flush=True,
+                            "[contractor email] send_email returned: "
+                            f"{email_send_result!r}",
+                            flush=True
                         )
 
                     except Exception as exc:
-                        email_send_error = str(exc)
+
+                        email_send_error = str(
+                            exc
+                        )
 
                         print(
                             "[contractor email] send failed: "
                             f"name={name!r}, "
-                            f"error={type(exc).__name__}: "
-                            f"{str(exc)[:250]}",
-                            flush=True,
+                            f"email={email!r}, "
+                            f"error={exc!r}",
+                            flush=True
                         )
 
-                        # Do not reserve this email address or business
-                        # as qualified if sending failed.
                         continue
 
-                source_url = _normalise_url(
-                    provider.get("source_url")
-                )
-
                 external_id = (
-                    f"gemini-web-{maintenance_request_id}-"
+                    f"gemini-web-"
+                    f"{maintenance_request_id}-"
                     f"{len(candidates) + 1}"
                 )
 
+                source_url = _normalise_url(
+                    provider.get(
+                        "source_url"
+                    )
+                )
+
                 candidate = ExternalWorkerCandidate(
-                    maintenance_request_id=maintenance_request_id,
+                    maintenance_request_id=(
+                        maintenance_request_id
+                    ),
+
                     provider="gemini_web_search",
+
                     external_id=external_id,
+
                     name=name,
+
                     trade=trade,
+
                     location=location_value,
+
                     rating=rating,
+
                     review_count=review_count,
+
                     availability=availability,
+
                     website=website,
+
                     phone=phone,
+
                     email=email,
+
                     source_url=source_url,
                 )
 
-                # These temporary attributes are consumed by the
-                # existing calling workflow; keep their names stable.
-                candidate._email_send_result = email_send_result
-                candidate._email_send_error = email_send_error
-                candidate._email_subject = email_subject
-                candidate._email_html = email_html
-                candidate._email_text_body = email_text_body
-                candidate._email_recipient = email
+                candidate._email_send_result = (
+                    email_send_result
+                )
 
-                candidates.append(candidate)
+                candidate._email_send_error = (
+                    email_send_error
+                )
 
-                # Mark as seen only after it has qualified and been
-                # appended. This avoids discarding failed candidates
-                # before they can be reconsidered.
-                seen_businesses.add(prepared_keys[index])
-                seen_emails.add(email)
+                candidate._email_subject = (
+                    email_subject
+                )
+
+                candidate._email_html = (
+                    email_html
+                )
+
+                candidate._email_text_body = (
+                    email_text_body
+                )
+
+                candidate._email_recipient = (
+                    email
+                )
+
+                candidates.append(
+                    candidate
+                )
 
                 print(
-                    "[external search] QUALIFYING provider "
-                    f"{len(candidates)}/{TARGET_CONTRACTORS}: "
-                    f"name={name!r}, trade={trade!r}, "
+                    "[external search] QUALIFYING "
+                    f"contractor {len(candidates)}/"
+                    f"{TARGET_CONTRACTORS}: "
+                    f"name={name!r}, "
+                    f"trade={trade!r}, "
                     f"location={location_value!r}, "
+                    f"email={email!r}, "
                     f"tier={tier_name!r}",
-                    flush=True,
+                    flush=True
                 )
 
             if len(candidates) >= TARGET_CONTRACTORS:
+
                 print(
                     "[external search] target reached: "
                     f"{len(candidates)}/{TARGET_CONTRACTORS}",
-                    flush=True,
+                    flush=True
                 )
+
                 break
 
-        tier_added = len(candidates) - tier_start_count
+        tier_added = (
+            len(candidates)
+            - tier_start_count
+        )
 
         print(
             "[external search] completed geographic tier: "
-            f"{tier_name!r}, added={tier_added}, "
-            f"total={len(candidates)}/{TARGET_CONTRACTORS}",
-            flush=True,
+            f"{tier_name!r}, "
+            f"qualifying added={tier_added}, "
+            f"total="
+            f"{len(candidates)}/{TARGET_CONTRACTORS}",
+            flush=True
         )
 
         if len(candidates) >= TARGET_CONTRACTORS:
+
             print(
-                "[external search] enough qualifying providers found; "
-                "no broader geographic search required",
-                flush=True,
+                "[external search] 20 qualifying contractors "
+                "found. No broader geographic search required.",
+                flush=True
             )
+
             break
 
         if tier_index < len(location_tiers) - 1:
-            next_tier_name = location_tiers[tier_index + 1][0]
+
+            next_tier_name = location_tiers[
+                tier_index + 1
+            ][0]
 
             print(
-                "[external search] insufficient qualifying providers; "
-                f"expanding to {next_tier_name!r}",
-                flush=True,
+                "[external search] fewer than "
+                f"{TARGET_CONTRACTORS} qualifying contractors "
+                f"after {tier_name!r}. "
+                f"Expanding geographically to "
+                f"{next_tier_name!r}.",
+                flush=True
             )
 
     print(
         "[external search] final qualifying candidates: "
         f"{len(candidates)}/{TARGET_CONTRACTORS}",
-        flush=True,
+        flush=True
     )
 
     if len(candidates) < TARGET_CONTRACTORS:
+
         print(
             "[external search] WARNING: fewer than "
-            f"{TARGET_CONTRACTORS} qualifying providers found",
-            flush=True,
+            f"{TARGET_CONTRACTORS} qualifying contractors "
+            "were found after all geographic tiers.",
+            flush=True
         )
 
     return candidates[:TARGET_CONTRACTORS]
@@ -3725,13 +4443,15 @@ def find_contractors_with_gemini(
     location=None,
     email_subject=None,
     email_html=None,
-    email_text_body=None,
+    email_text_body=None
 ):
     return search_external_workers(
-        maintenance_request_id=maintenance_request_id,
+        maintenance_request_id=(
+            maintenance_request_id
+        ),
         required_trades=required_trades,
         location=location,
         email_subject=email_subject,
         email_html=email_html,
-        email_text_body=email_text_body,
+        email_text_body=email_text_body
     )
