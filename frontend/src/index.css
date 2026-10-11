@@ -2107,3 +2107,376 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* ============================================================
+   MATCHLY — HOW TO USE PAGE
+   ============================================================ */
+
+.how-to-intro,
+.how-to-step,
+.how-to-support,
+.how-to-footer {
+  border: 1px solid rgba(226, 229, 235, 0.9);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 1px 2px rgba(20, 24, 35, 0.025),
+    0 10px 30px rgba(20, 24, 35, 0.035);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.how-to-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 22px;
+}
+
+.how-to-intro-icon,
+.how-to-step-icon,
+.how-to-support-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e7ed;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fafbfc, #f0f2f6);
+  color: #555e70;
+}
+
+.how-to-intro-icon {
+  width: 46px;
+  height: 46px;
+}
+
+.how-to-intro h2,
+.how-to-step-content h2,
+.how-to-support h2,
+.how-to-footer h2 {
+  margin: 0;
+  color: #191c24;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.how-to-intro p,
+.how-to-step-content p,
+.how-to-support > p,
+.how-to-support-step p,
+.how-to-refund p,
+.how-to-footer p {
+  margin: 8px 0 0;
+  color: #777e8b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.how-to-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  margin-bottom: 24px;
+}
+
+.how-to-step {
+  display: grid;
+  grid-template-columns: 42px 46px minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.how-to-step:hover {
+  transform: translateY(-2px);
+  border-color: #dce0e7;
+  box-shadow: 0 14px 32px rgba(20, 24, 35, 0.055);
+}
+
+.how-to-step-number {
+  padding-top: 11px;
+  color: #a0a5af;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.how-to-step-icon {
+  width: 46px;
+  height: 46px;
+}
+
+.how-to-step-content {
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.how-to-step-content h2 {
+  font-size: 16px;
+}
+
+.how-to-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 13px;
+  padding: 8px 11px;
+  border: 1px solid #e2e5eb;
+  border-radius: 10px;
+  background: #fafbfc;
+  color: #424957;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.how-to-action:hover {
+  background: #f0f2f6;
+  border-color: #d6dae2;
+  transform: translateX(2px);
+}
+
+.how-to-action svg {
+  transition: transform 150ms ease;
+}
+
+.how-to-action:hover svg {
+  transform: translateX(2px);
+}
+
+/* Support promise */
+
+.how-to-support {
+  margin-bottom: 24px;
+  padding: 26px;
+  border-color: #e1e5ed;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.95),
+      rgba(247, 249, 252, 0.88)
+    );
+}
+
+.how-to-support-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.how-to-support-icon {
+  width: 46px;
+  height: 46px;
+}
+
+.how-to-support-heading .page-eyebrow {
+  margin: 0 0 6px;
+  color: #8a91a0;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+}
+
+.how-to-support-heading h2 {
+  font-size: 20px;
+}
+
+.how-to-support-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 23px 0;
+}
+
+.how-to-support-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 15px 0;
+  border-bottom: 1px solid #eceef2;
+}
+
+.how-to-support-step:first-child {
+  border-top: 1px solid #eceef2;
+}
+
+.how-to-support-step > span {
+  flex-shrink: 0;
+  width: 29px;
+  height: 29px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e1e4ea;
+  border-radius: 10px;
+  background: #f5f6f9;
+  color: #626a79;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.how-to-support-step h3,
+.how-to-refund h3 {
+  margin: 2px 0 0;
+  color: #303540;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.how-to-support-step p {
+  margin-top: 5px;
+}
+
+.how-to-refund {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  margin: 20px 0;
+  padding: 17px;
+  border: 1px solid #dfe7e2;
+  border-radius: 15px;
+  background: #f5f9f6;
+}
+
+.how-to-refund > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #46745a;
+}
+
+.how-to-refund h3 {
+  color: #355a44;
+}
+
+.how-to-refund p {
+  margin-top: 5px;
+  color: #647b6c;
+}
+
+/* Final call to action */
+
+.how-to-footer {
+  padding: 26px;
+  text-align: center;
+}
+
+.how-to-footer p {
+  max-width: 500px;
+  margin: 9px auto 18px;
+}
+
+.how-to-footer .primary-button,
+.how-to-support > .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 11px 16px;
+  border: 1px solid #171a21;
+  border-radius: 12px;
+  background: #171a21;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.how-to-footer .primary-button:hover,
+.how-to-support > .primary-button:hover {
+  background: #292d36;
+  transform: translateY(-1px);
+}
+
+/* Responsive guide */
+
+@media (max-width: 700px) {
+  .how-to-intro,
+  .how-to-step,
+  .how-to-support,
+  .how-to-footer {
+    border-radius: 16px;
+  }
+
+  .how-to-intro {
+    padding: 18px;
+  }
+
+  .how-to-step {
+    grid-template-columns: 30px 40px minmax(0, 1fr);
+    gap: 11px;
+    padding: 17px;
+  }
+
+  .how-to-step-number {
+    padding-top: 9px;
+    font-size: 11px;
+  }
+
+  .how-to-step-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+
+  .how-to-step-content h2 {
+    font-size: 15px;
+  }
+
+  .how-to-support {
+    padding: 20px;
+  }
+
+  .how-to-support-heading h2 {
+    font-size: 18px;
+  }
+
+  .how-to-footer {
+    padding: 22px 18px;
+  }
+
+  .how-to-footer .primary-button,
+  .how-to-support > .primary-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .how-to-step {
+    grid-template-columns: 25px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .how-to-step-number {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .how-to-step-icon {
+    display: none;
+  }
+
+  .how-to-step-content {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .how-to-support-heading {
+    align-items: flex-start;
+  }
+}
