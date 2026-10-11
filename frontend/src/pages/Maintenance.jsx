@@ -18,6 +18,10 @@ import {
 } from "lucide-react"
 import { apiRequest } from "../services/api"
 
+// Route navigation unmounts this page while the backend search keeps running.
+// Keep active IDs outside the component so a remount can restore button state.
+const activeExternalWorkerSearches = new Set()
+
 export default function Maintenance() {
   const [requests, setRequests] = useState([])
   const [properties, setProperties] = useState([])
@@ -33,7 +37,7 @@ export default function Maintenance() {
   const [formError, setFormError] = useState("")
 
   const [searchingExternalWorker, setSearchingExternalWorker] =
-    useState(null)
+    useState(() => new Set(activeExternalWorkerSearches))
 
   const [expandedReplies, setExpandedReplies] = useState({})
 
@@ -69,6 +73,24 @@ export default function Maintenance() {
 
   useEffect(() => {
     loadData()
+  }, [])
+
+  useEffect(() => {
+    function syncExternalWorkerSearches() {
+      setSearchingExternalWorker(new Set(activeExternalWorkerSearches))
+    }
+
+    window.addEventListener(
+      "external-worker-searches-changed",
+      syncExternalWorkerSearches
+    )
+
+    return () => {
+      window.removeEventListener(
+        "external-worker-searches-changed",
+        syncExternalWorkerSearches
+      )
+    }
   }, [])
 
   function toggleReply(requestId, candidateId, replyId) {
@@ -214,8 +236,13 @@ export default function Maintenance() {
   }
 
   async function searchExternalWorkers(requestId) {
+    if (activeExternalWorkerSearches.has(requestId)) return
+
+    activeExternalWorkerSearches.add(requestId)
+    setSearchingExternalWorker(new Set(activeExternalWorkerSearches))
+    window.dispatchEvent(new Event("external-worker-searches-changed"))
+
     try {
-      setSearchingExternalWorker(requestId)
       setError("")
 
       const result = await apiRequest(
@@ -246,7 +273,9 @@ export default function Maintenance() {
         error.message || "Could not search for external workers"
       )
     } finally {
-      setSearchingExternalWorker(null)
+      activeExternalWorkerSearches.delete(requestId)
+      setSearchingExternalWorker(new Set(activeExternalWorkerSearches))
+      window.dispatchEvent(new Event("external-worker-searches-changed"))
     }
   }
 
@@ -404,7 +433,7 @@ export default function Maintenance() {
               )
 
               const isSearchingExternal =
-                searchingExternalWorker === request.id
+                searchingExternalWorker.has(request.id)
 
               return (
                 <div
@@ -1083,3 +1112,4 @@ function ContractorReplies({
     </div>
   )
 }
+
