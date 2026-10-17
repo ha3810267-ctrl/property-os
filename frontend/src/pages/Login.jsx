@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { GitCompareArrows } from "lucide-react"
 import { apiRequest } from "../services/api"
 
 export default function Login() {
@@ -112,8 +113,10 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="brand">
-          <div className="brand-mark">S</div>
-          <span>ServiceOS</span>
+          <div className="brand-mark">
+            <GitCompareArrows size={20} />
+          </div>
+          <span>Matchly</span>
         </div>
 
         <div className="login-header">
