@@ -6,6 +6,8 @@ import {
   ArrowUpRight,
   Plus,
   Mail,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 
 import { useEffect, useState } from "react"
@@ -18,6 +20,9 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [recentRequests, setRecentRequests] = useState([])
   const [recentReplies, setRecentReplies] = useState([])
+  const [expandedReplyRequests, setExpandedReplyRequests] = useState(
+    () => new Set()
+  )
   const [maintenanceLoading, setMaintenanceLoading] =
     useState(true)
 
@@ -151,6 +156,37 @@ export default function Dashboard() {
       : cleaned
   }
 
+  const repliesByRequest = recentReplies.reduce((groups, reply) => {
+    const requestId = reply.maintenance_request_id
+    const existing = groups.get(requestId)
+
+    if (existing) {
+      existing.replies.push(reply)
+    } else {
+      groups.set(requestId, {
+        id: requestId,
+        description: reply.maintenance_description,
+        category: reply.maintenance_category,
+        propertyAddress: reply.property_address,
+        replies: [reply],
+      })
+    }
+
+    return groups
+  }, new Map())
+
+  function toggleReplyRequest(requestId) {
+    setExpandedReplyRequests((current) => {
+      const next = new Set(current)
+      if (next.has(requestId)) {
+        next.delete(requestId)
+      } else {
+        next.add(requestId)
+      }
+      return next
+    })
+  }
+
   function createRequest() {
     navigate("/requests")
   }
@@ -278,64 +314,67 @@ export default function Dashboard() {
             </p>
           </div>
         ) : (
-          <div className="dashboard-maintenance-list">
-            {recentReplies.map((reply, index) => {
-              const subject =
-                reply.subject || "Professional reply"
+          <div className="dashboard-reply-requests">
+            {[...repliesByRequest.values()].map((request) => {
+              const expanded = expandedReplyRequests.has(request.id)
+              const label = request.description || request.category || "Service request"
 
               return (
-                <div
-                  className="dashboard-maintenance-item"
-                  key={
-                    reply.id ||
-                    `${reply.maintenance_request_id}-${index}`
-                  }
-                  onClick={openRequest}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === "Enter" ||
-                      event.key === " "
-                    ) {
-                      event.preventDefault()
-                      openRequest()
-                    }
-                  }}
-                >
-                  <div className="dashboard-maintenance-icon">
-                    <Mail size={17} />
-                  </div>
-
-                  <div className="dashboard-maintenance-content">
-                    <div className="dashboard-maintenance-top">
-                      <strong>{reply.contractor_name}</strong>
-
-                      <span>{formatReplyDate(reply)}</span>
-                    </div>
-
-                    <p>{subject}</p>
-
-                    <p>{getReplyPreview(reply)}</p>
-
-                    <div className="dashboard-maintenance-meta">
-                      <span>
-                        {reply.property_address ||
-                          reply.location ||
-                          "Location not specified"}
+                <section className="dashboard-reply-request" key={request.id}>
+                  <button
+                    type="button"
+                    className="dashboard-reply-request-toggle"
+                    aria-expanded={expanded}
+                    onClick={() => toggleReplyRequest(request.id)}
+                  >
+                    <span className="dashboard-maintenance-icon">
+                      <ClipboardList size={17} />
+                    </span>
+                    <span className="dashboard-reply-request-heading">
+                      <span className="dashboard-maintenance-top">
+                        <strong>{request.category || "Service request"}</strong>
+                        <span className="dashboard-reply-count">
+                          {request.replies.length} {request.replies.length === 1 ? "reply" : "replies"}
+                        </span>
                       </span>
-
-                      <span>
-                        {reply.maintenance_category ||
-                          "Service request"}
+                      <span className="dashboard-reply-request-description">{label}</span>
+                      <span className="dashboard-maintenance-meta">
+                        <span>{request.propertyAddress || "Location not specified"}</span>
+                        <span>Latest {formatReplyDate(request.replies[0])}</span>
                       </span>
-                    </div>
-                  </div>
+                    </span>
+                    <span className="dashboard-reply-request-chevron" aria-hidden="true">
+                      {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </span>
+                  </button>
 
-                  <div className="dashboard-maintenance-arrow">
-                    <ArrowUpRight size={16} />
-                  </div>
-                </div>
+                  {expanded && (
+                    <div className="dashboard-reply-list">
+                      {request.replies.map((reply, index) => (
+                        <article
+                          className="dashboard-reply-item"
+                          key={reply.id || `${request.id}-${index}`}
+                        >
+                          <div className="dashboard-reply-item-top">
+                            <strong>{reply.contractor_name}</strong>
+                            <span>{formatReplyDate(reply)}</span>
+                          </div>
+                          <p className="dashboard-reply-subject">
+                            {reply.subject || "Professional reply"}
+                          </p>
+                          <p className="dashboard-reply-preview">{getReplyPreview(reply)}</p>
+                        </article>
+                      ))}
+                      <button
+                        type="button"
+                        className="dashboard-reply-view-request"
+                        onClick={openRequest}
+                      >
+                        Open service requests <ArrowUpRight size={14} />
+                      </button>
+                    </div>
+                  )}
+                </section>
               )
             })}
           </div>
