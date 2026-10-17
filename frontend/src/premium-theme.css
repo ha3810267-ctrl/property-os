@@ -411,3 +411,19 @@ body .app-shell .priority-badge.low { color: #c9c2b6; }
 .auth-page :is(p, span, label, strong, small) { color: #e6e0d3; }
 .auth-page .auth-subtitle,
 .auth-page .invitation-footer { color: #bdb6a9; }
+
+/* These page selectors were more specific than the legacy heading rules. */
+body .app-shell .dashboard-page .stat-card h2,
+body .app-shell .dashboard-page .card-header h2,
+body .app-shell .dashboard-page .dashboard-maintenance-top strong,
+body .app-shell .contact-page .card-header h2 {
+  color: #f1ede5;
+}
+
+body .app-shell .dashboard-page .stat-card-top p,
+body .app-shell .dashboard-page .stat-card > span,
+body .app-shell .dashboard-page .card-subtitle,
+body .app-shell .dashboard-page .dashboard-maintenance-content > p,
+body .app-shell .dashboard-page .dashboard-maintenance-meta {
+  color: #bdb6a9;
+}
