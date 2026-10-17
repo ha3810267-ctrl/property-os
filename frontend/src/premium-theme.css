@@ -427,3 +427,35 @@ body .app-shell .dashboard-page .dashboard-maintenance-content > p,
 body .app-shell .dashboard-page .dashboard-maintenance-meta {
   color: #bdb6a9;
 }
+
+/* The request cards have old, highly specific glass rules; lock their dark surface. */
+body .app-shell .dashboard-page.maintenance-page .maintenance-list > .maintenance-card {
+  border-color: rgba(225, 211, 184, .14) !important;
+  background: #1b1a18 !important;
+  background-image: none !important;
+  color: #f1ede5 !important;
+}
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-card {
+  border-color: rgba(225, 211, 184, .13) !important;
+  background: #242321 !important;
+  background-image: none !important;
+  color: #e6e0d3 !important;
+}
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-card.selected {
+  border-color: rgba(199, 168, 110, .22) !important;
+  background: #29251e !important;
+}
+
+body .app-shell .dashboard-page.maintenance-page .maintenance-card h2,
+body .app-shell .dashboard-page.maintenance-page .maintenance-card h3,
+body .app-shell .dashboard-page.maintenance-page .maintenance-card strong {
+  color: #f1ede5;
+}
+
+body .app-shell .dashboard-page.maintenance-page .maintenance-card p,
+body .app-shell .dashboard-page.maintenance-page .maintenance-card .maintenance-meta,
+body .app-shell .dashboard-page.maintenance-page .maintenance-card .contractor-trade {
+  color: #bdb6a9;
+}
