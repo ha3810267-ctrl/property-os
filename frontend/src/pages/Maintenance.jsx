@@ -502,9 +502,14 @@ export default function Maintenance() {
                           >
                             <ExternalLink size={16} />
 
-                            {isSearchingExternal
-                              ? "Finding providers..."
-                              : "Find providers"}
+                            {isSearchingExternal ? (
+                              <span className="provider-search-status">
+                                <strong>Finding providers...</strong>
+                                <small>Please do not refresh the page.</small>
+                              </span>
+                            ) : (
+                              "Find providers"
+                            )}
                           </button>
                         </div>
                       )}

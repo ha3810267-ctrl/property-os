@@ -1112,6 +1112,190 @@
   align-items: center;
 }
 
+/* Service finder refinements */
+.dashboard-page.maintenance-page {
+  max-width: 1320px;
+  padding-bottom: 48px;
+}
+
+.maintenance-page .properties-header {
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.maintenance-page .properties-title h1 {
+  color: #14241f;
+  font-size: clamp(32px, 3.2vw, 42px);
+  letter-spacing: -0.055em;
+}
+
+.maintenance-page .properties-title .eyebrow {
+  color: #658476;
+  letter-spacing: 0.16em;
+}
+
+.maintenance-page .properties-title .page-subtitle {
+  max-width: 540px;
+  color: #707c76;
+  font-size: 14px;
+}
+
+.maintenance-page .property-toolbar {
+  padding: 13px 15px;
+  margin-bottom: 20px;
+  border: 1px solid #e7ece8;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.maintenance-page .search-box {
+  min-height: 44px;
+  border-color: #e5eae6;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(28, 48, 38, 0.035);
+}
+
+.maintenance-page .search-box:focus-within {
+  border-color: #9bb8a9;
+  box-shadow: 0 0 0 3px rgba(85, 132, 108, 0.1);
+}
+
+.maintenance-page .property-count {
+  padding: 7px 11px;
+  border: 1px solid #e7ece8;
+  border-radius: 999px;
+  background: #f8faf8;
+  color: #617268;
+  font-weight: 600;
+}
+
+.maintenance-page .maintenance-list {
+  gap: 16px;
+}
+
+.maintenance-page .maintenance-card {
+  padding: 23px;
+  border-color: #e8ede9;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fff 0%, #fbfcfb 100%);
+  box-shadow: 0 3px 10px rgba(28, 48, 38, 0.035), 0 14px 34px rgba(28, 48, 38, 0.025);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.maintenance-page .maintenance-card:hover {
+  transform: translateY(-2px);
+  border-color: #d5e2d9;
+  box-shadow: 0 6px 16px rgba(28, 48, 38, 0.055), 0 20px 42px rgba(28, 48, 38, 0.04);
+}
+
+.maintenance-page .maintenance-icon {
+  width: 46px;
+  height: 46px;
+  flex-basis: 46px;
+  border: 1px solid #e0ebe3;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #f3f8f4, #eaf2ec);
+  color: #47715a;
+}
+
+.maintenance-page .maintenance-top h2 {
+  color: #1a2b22;
+  font-size: 17px;
+  letter-spacing: -0.03em;
+}
+
+.maintenance-page .maintenance-description {
+  color: #68766e;
+  font-size: 13px;
+}
+
+.maintenance-page .maintenance-meta {
+  color: #87938b;
+}
+
+.maintenance-page .external-worker-search {
+  margin-top: 18px;
+  padding: 15px 16px;
+  border-color: #e6ece7;
+  border-radius: 14px;
+  background: #f8faf8;
+}
+
+.maintenance-page .external-worker-search .section-label {
+  color: #344f40;
+}
+
+.maintenance-page .external-worker-search p {
+  color: #77837b;
+}
+
+.maintenance-page .external-worker-search .secondary-button {
+  max-width: 320px;
+  border-color: #dce7df;
+  border-radius: 11px;
+  background: #fff;
+  color: #365a45;
+  box-shadow: 0 2px 5px rgba(28, 48, 38, 0.035);
+}
+
+.maintenance-page .external-worker-search .secondary-button:hover:not(:disabled) {
+  border-color: #bfd2c4;
+  background: #f3f8f4;
+}
+
+.maintenance-page .provider-search-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+
+.maintenance-page .provider-search-status small {
+  color: #77877d;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.maintenance-page .dashboard-card {
+  border: 1px solid #e7ece8;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fff, #fbfcfb);
+  box-shadow: 0 8px 28px rgba(28, 48, 38, 0.04);
+}
+
+.maintenance-page .empty-icon {
+  border: 1px solid #e0ebe3;
+  background: #f0f6f1;
+  color: #47715a;
+}
+
+@media (max-width: 640px) {
+  .maintenance-page .properties-header {
+    align-items: flex-start;
+  }
+
+  .maintenance-page .property-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .maintenance-page .property-count {
+    align-self: flex-start;
+  }
+
+  .maintenance-page .maintenance-card {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .maintenance-page .external-worker-search .secondary-button {
+    max-width: none;
+    white-space: normal;
+  }
+}
+
 .maintenance-controls {
   flex-shrink: 0;
   display: flex;

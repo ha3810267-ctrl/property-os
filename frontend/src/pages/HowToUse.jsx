@@ -3,7 +3,6 @@ import {
   MapPin,
   ClipboardList,
   Search,
-  RefreshCw,
   Mail,
   Clock,
   ShieldCheck,
@@ -36,10 +35,10 @@ const steps = [
   },
   {
     number: "04",
-    icon: RefreshCw,
-    title: "Wait, then refresh",
+    icon: Search,
+    title: "Review your matches",
     description:
-      "Wait until the Find Providers button becomes available (ungreyed) again. Then refresh the page to load and display the search results.",
+      "Your recommended providers will appear here as soon as the search is complete. You can review their details and choose the best fit for your request.",
   },
   {
     number: "05",
