@@ -41,14 +41,13 @@ export default function Maintenance() {
 
   async function loadData() {
     try {
-      setLoading(true)
-      setError("")
-
       const [maintenanceData, propertiesData] =
         await Promise.all([
           apiRequest("/maintenance-requests"),
           apiRequest("/properties"),
         ])
+
+      setError("")
 
       setRequests(
         Array.isArray(maintenanceData)
@@ -70,7 +69,35 @@ export default function Maintenance() {
   }
 
   useEffect(() => {
-    loadData()
+    let cancelled = false
+
+    async function loadInitialData() {
+      try {
+        const [maintenanceData, propertiesData] = await Promise.all([
+          apiRequest("/maintenance-requests"),
+          apiRequest("/properties"),
+        ])
+
+        if (cancelled) return
+
+        setError("")
+        setRequests(Array.isArray(maintenanceData) ? maintenanceData : [])
+        setProperties(Array.isArray(propertiesData) ? propertiesData : [])
+      } catch (error) {
+        console.error(error)
+        if (!cancelled) {
+          setError(error.message || "Unable to load service requests")
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadInitialData()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -372,7 +399,10 @@ export default function Maintenance() {
 
             <button
               className="secondary-button"
-              onClick={loadData}
+              onClick={() => {
+                setLoading(true)
+                loadData()
+              }}
             >
               Try again
             </button>

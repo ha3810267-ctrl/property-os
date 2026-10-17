@@ -25,10 +25,9 @@ export default function Properties() {
 
   async function loadProperties() {
     try {
-      setError("")
-
       const data = await apiRequest("/properties")
 
+      setError("")
       setProperties(data)
     } catch (error) {
       console.error(error)
@@ -39,7 +38,29 @@ export default function Properties() {
   }
 
   useEffect(() => {
-    loadProperties()
+    let cancelled = false
+
+    async function loadInitialProperties() {
+      try {
+        const data = await apiRequest("/properties")
+
+        if (cancelled) return
+
+        setError("")
+        setProperties(data)
+      } catch (error) {
+        console.error(error)
+        if (!cancelled) setError(error.message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadInitialProperties()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function openAddModal() {

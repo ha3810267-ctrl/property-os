@@ -1,0 +1,355 @@
+/* Loaded last by main.jsx so legacy page rules cannot repaint the theme. */
+:root {
+  color-scheme: dark;
+  --lux-bg: #101010;
+  --lux-side: #151514;
+  --lux-surface: #1b1a18;
+  --lux-surface-raised: #242321;
+  --lux-line: rgba(225, 211, 184, .14);
+  --lux-text: #f1ede5;
+  --lux-muted: #aaa49a;
+  --lux-gold: #c7a86e;
+  --lux-gold-light: #ddc38d;
+  color: var(--lux-text);
+  background: var(--lux-bg);
+}
+
+body {
+  background: var(--lux-bg);
+  color: var(--lux-text);
+}
+
+button, input, textarea, select { color-scheme: dark; }
+
+body .app-shell {
+  background: radial-gradient(ellipse at 80% 0%, rgba(166, 132, 74, .08), transparent 34%), var(--lux-bg);
+  color: var(--lux-text);
+}
+
+body .app-shell .sidebar {
+  border-right: 1px solid rgba(225, 211, 184, .1);
+  background: linear-gradient(180deg, #181716 0%, #111110 100%);
+  color: var(--lux-text);
+  box-shadow: 8px 0 28px rgba(0, 0, 0, .2);
+}
+
+body .app-shell .brand { color: #f4f0e9; }
+
+body .app-shell .brand-mark {
+  border: 1px solid rgba(216, 190, 137, .25);
+  background: linear-gradient(145deg, #c7a86e, #977746);
+  color: #171512;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255,255,255,.22);
+}
+
+body .app-shell .sidebar-nav a,
+body .app-shell .sidebar-bottom a,
+body .app-shell .logout-button { color: #aaa59c; }
+
+body .app-shell .sidebar-nav a svg,
+body .app-shell .sidebar-bottom a svg,
+body .app-shell .logout-button svg { color: #827b6f; }
+
+body .app-shell .sidebar-nav a:hover,
+body .app-shell .sidebar-bottom a:hover,
+body .app-shell .logout-button:hover {
+  border-color: rgba(228, 215, 190, .1);
+  background: rgba(255, 255, 255, .045);
+  color: #f3eee5;
+}
+
+body .app-shell .sidebar-nav a.active,
+body .app-shell .sidebar-bottom a.active {
+  border-color: rgba(199, 168, 110, .17);
+  background: linear-gradient(110deg, rgba(199, 168, 110, .15), rgba(199, 168, 110, .055));
+  color: #f4e8cf;
+  box-shadow: inset 3px 0 0 var(--lux-gold);
+}
+
+body .app-shell .sidebar-nav a.active svg,
+body .app-shell .sidebar-bottom a.active svg { color: var(--lux-gold-light); }
+
+body .app-shell .sidebar-bottom { border-color: rgba(225, 211, 184, .11); }
+body .app-shell .main-content { background: transparent; color: var(--lux-text); }
+
+body .app-shell h1,
+body .app-shell h2,
+body .app-shell h3,
+body .app-shell .settings-value { color: var(--lux-text); }
+
+body .app-shell .eyebrow,
+body .app-shell .page-eyebrow,
+body .app-shell .properties-title .eyebrow { color: #c5a66c; }
+
+body .app-shell .page-subtitle,
+body .app-shell .page-description,
+body .app-shell .card-subtitle,
+body .app-shell .settings-section-header p,
+body .app-shell .settings-label { color: var(--lux-muted); }
+
+body .app-shell .primary-button {
+  border: 1px solid #c7a86e;
+  background: linear-gradient(135deg, #d5bb86, #b39258);
+  color: #171512;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .28);
+}
+
+body .app-shell .primary-button:hover:not(:disabled) {
+  border-color: #e1c995;
+  background: #e1c995;
+  color: #111;
+}
+
+body .app-shell .secondary-button,
+body .app-shell .settings-button {
+  border-color: var(--lux-line);
+  background: #242321;
+  color: #e3d8c2;
+}
+
+body .app-shell .secondary-button:hover:not(:disabled),
+body .app-shell .settings-button:hover {
+  border-color: rgba(210, 181, 124, .4);
+  background: #302c24;
+  color: #f3e7d0;
+}
+
+body .app-shell .text-button { color: var(--lux-gold-light); }
+
+body .app-shell .stat-card,
+body .app-shell .dashboard-card,
+body .app-shell .settings-card,
+body .app-shell .property-card,
+body .app-shell .how-to-intro,
+body .app-shell .how-to-step,
+body .app-shell .how-to-support,
+body .app-shell .how-to-footer,
+body .app-shell .contact-page > .dashboard-card {
+  border-color: var(--lux-line);
+  background: linear-gradient(145deg, #1d1c1a, #171716);
+  color: var(--lux-text);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .24);
+}
+
+body .app-shell .stat-card::after { background: rgba(199, 168, 110, .055); }
+
+body .app-shell .stat-card-top p,
+body .app-shell .stat-card > span,
+body .app-shell .empty-state p,
+body .app-shell .property-card p,
+body .app-shell .how-to-intro p,
+body .app-shell .how-to-step-content p,
+body .app-shell .how-to-support > p,
+body .app-shell .how-to-support-step p,
+body .app-shell .how-to-refund p,
+body .app-shell .how-to-footer p { color: var(--lux-muted); }
+
+body .app-shell .stat-card-top svg,
+body .app-shell .dashboard-maintenance-icon,
+body .app-shell .property-icon,
+body .app-shell .empty-icon,
+body .app-shell .how-to-intro-icon,
+body .app-shell .how-to-step-icon,
+body .app-shell .how-to-support-icon {
+  border-color: var(--lux-line);
+  background: #292722;
+  color: var(--lux-gold-light);
+}
+
+body .app-shell .dashboard-maintenance-item,
+body .app-shell .properties-toolbar,
+body .app-shell .properties-search {
+  border-color: var(--lux-line);
+  background: #242321;
+  color: var(--lux-text);
+}
+
+body .app-shell .dashboard-maintenance-item:hover { background: #2b2925; }
+body .app-shell .dashboard-maintenance-content > p,
+body .app-shell .dashboard-maintenance-meta,
+body .app-shell .dashboard-maintenance-arrow { color: var(--lux-muted); }
+
+body .app-shell .properties-count { color: #c8bdab; }
+body .app-shell .properties-search input,
+body .app-shell .search-box input { color: var(--lux-text); }
+body .app-shell .properties-search input::placeholder,
+body .app-shell .search-box input::placeholder { color: #89847b; }
+
+body .app-shell .properties-search:focus-within,
+body .app-shell .search-box:focus-within {
+  border-color: #ad905c;
+  background: #211f1b;
+  box-shadow: 0 0 0 3px rgba(199, 168, 110, .12);
+}
+
+body .app-shell .property-action { color: #bcb4a5; }
+body .app-shell .property-action:hover { background: #302b20; color: #e0c58d; }
+body .app-shell .property-action.delete:hover { background: #382722; color: #e4ad91; }
+
+body .app-shell .priority-badge {
+  border: 1px solid var(--lux-line);
+  background: #2a2925;
+  color: #c7c0b2;
+}
+
+body .app-shell .priority-badge.high,
+body .app-shell .priority-badge.urgent {
+  border-color: rgba(198, 126, 97, .28);
+  background: #382722;
+  color: #e4ad91;
+}
+
+body .app-shell .priority-badge.normal { border-color: rgba(199, 168, 110, .23); background: #302b20; color: #ddc48f; }
+body .app-shell .priority-badge.low { background: #272623; color: #b7b0a3; }
+
+body .app-shell .how-to-intro,
+body .app-shell .how-to-footer { background: linear-gradient(125deg, #27241e, #1b1a18); }
+body .app-shell .how-to-action { border-color: var(--lux-line); background: #292722; color: #ddc48f; }
+body .app-shell .how-to-action:hover { border-color: rgba(210, 181, 124, .38); background: #332e24; color: #f0dfbb; }
+body .app-shell .how-to-step-number { color: #b6a27b; }
+body .app-shell .how-to-support-step { border-color: var(--lux-line); }
+body .app-shell .how-to-support-step > span { border-color: var(--lux-line); background: #292722; color: #d5bb84; }
+body .app-shell .how-to-refund { border-color: rgba(199, 168, 110, .2); background: #27241e; }
+body .app-shell .how-to-refund h3 { color: #ddc48f; }
+
+body .app-shell .settings-row { border-color: rgba(228, 215, 190, .1); }
+body .app-shell .settings-role { border: 1px solid rgba(199, 168, 110, .2); background: #302b20; color: #ddc48f; }
+
+body .app-shell input,
+body .app-shell textarea,
+body .app-shell select {
+  border-color: rgba(228, 215, 190, .16);
+  background-color: #131312;
+  color: var(--lux-text);
+}
+
+body .app-shell input::placeholder,
+body .app-shell textarea::placeholder { color: #89847b; }
+
+body .app-shell input:focus,
+body .app-shell textarea:focus,
+body .app-shell select:focus {
+  border-color: #ad905c;
+  background-color: #1a1916;
+  box-shadow: 0 0 0 3px rgba(199, 168, 110, .12);
+  outline: 0;
+}
+
+body .app-shell .modal-overlay { background: rgba(0, 0, 0, .78); }
+body .app-shell .modal { border-color: var(--lux-line); background: #1b1a18; color: var(--lux-text); }
+body .app-shell .modal-header h2 { color: var(--lux-text); }
+body .app-shell .modal-header .eyebrow { color: #c5a66c; }
+body .app-shell .modal .icon-button { color: #bcb4a5; }
+
+/* Service finder selectors outrank the page-specific legacy rules. */
+body .app-shell .dashboard-page.maintenance-page .properties-header,
+body .app-shell .dashboard-page.maintenance-page .property-toolbar,
+body .app-shell .dashboard-page.maintenance-page > .dashboard-card,
+body .app-shell .dashboard-page.maintenance-page .maintenance-card {
+  border-color: var(--lux-line);
+  background: linear-gradient(145deg, #1d1c1a, #171716);
+  color: var(--lux-text);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .24);
+}
+
+body .app-shell .dashboard-page.maintenance-page .properties-header {
+  background: radial-gradient(ellipse at 88% 10%, rgba(190, 153, 83, .09), transparent 40%), linear-gradient(120deg, #211f1b, #181817);
+}
+
+body .app-shell .dashboard-page.maintenance-page .maintenance-top h2,
+body .app-shell .dashboard-page.maintenance-page .external-worker-header h3,
+body .app-shell .dashboard-page.maintenance-page .properties-title h1 { color: var(--lux-text); }
+
+body .app-shell .dashboard-page.maintenance-page .maintenance-description,
+body .app-shell .dashboard-page.maintenance-page .maintenance-meta,
+body .app-shell .dashboard-page.maintenance-page .external-worker-header p,
+body .app-shell .dashboard-page.maintenance-page .properties-title .page-subtitle { color: var(--lux-muted); }
+
+body .app-shell .dashboard-page.maintenance-page .search-box,
+body .app-shell .dashboard-page.maintenance-page .property-count,
+body .app-shell .dashboard-page.maintenance-page .external-worker-search,
+body .app-shell .dashboard-page.maintenance-page .external-worker-card,
+body .app-shell .dashboard-page.maintenance-page .contractor-stat,
+body .app-shell .dashboard-page.maintenance-page .contractor-contact-row > span,
+body .app-shell .dashboard-page.maintenance-page .contractor-contact-row > a,
+body .app-shell .dashboard-page.maintenance-page .contractor-replies,
+body .app-shell .dashboard-page.maintenance-page .contractor-reply,
+body .app-shell .dashboard-page.maintenance-page .contractor-reply-content {
+  border-color: var(--lux-line);
+  background: #242321;
+  color: #ded7ca;
+  box-shadow: none;
+}
+
+body .app-shell .dashboard-page.maintenance-page .maintenance-icon,
+body .app-shell .dashboard-page.maintenance-page .empty-icon { border-color: var(--lux-line); background: #292722; color: var(--lux-gold-light); }
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-search .section-label,
+body .app-shell .dashboard-page.maintenance-page .external-worker-identity strong,
+body .app-shell .dashboard-page.maintenance-page .contractor-stat strong,
+body .app-shell .dashboard-page.maintenance-page .contractor-reply-summary strong { color: #e8dfcf; }
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-search p,
+body .app-shell .dashboard-page.maintenance-page .contractor-trade,
+body .app-shell .dashboard-page.maintenance-page .contractor-stat span,
+body .app-shell .dashboard-page.maintenance-page .contractor-reply-summary span,
+body .app-shell .dashboard-page.maintenance-page .match-reason { color: var(--lux-muted); }
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-search .secondary-button,
+body .app-shell .dashboard-page.maintenance-page .contractor-contact-row > span,
+body .app-shell .dashboard-page.maintenance-page .contractor-contact-row > a { border-color: var(--lux-line); background: #1b1a18; color: #e3d8c2; }
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-card.selected { border-color: rgba(199, 168, 110, .2); background: #25221c; }
+body .app-shell .dashboard-page.maintenance-page .contractor-stat > svg,
+body .app-shell .dashboard-page.maintenance-page .contractor-contact-row svg,
+body .app-shell .dashboard-page.maintenance-page .contractor-reply-summary > svg { color: var(--lux-gold); }
+body .app-shell .dashboard-page.maintenance-page .match-score-badge,
+body .app-shell .dashboard-page.maintenance-page .selected-badge { border-color: rgba(199, 168, 110, .22); background: #302b20; color: #ddc48f; }
+body .app-shell .dashboard-page.maintenance-page .match-bar { background: #37342d; }
+body .app-shell .dashboard-page.maintenance-page .match-bar > div { background: linear-gradient(90deg, #dfc58f, #a9874c); }
+body .app-shell .dashboard-page.maintenance-page .contractor-reply-content pre { color: #d8d0c2; }
+body .app-shell .dashboard-page.maintenance-page .external-worker-section { border-color: var(--lux-line); }
+body .app-shell .dashboard-page.maintenance-page .maintenance-controls .property-action { border-color: var(--lux-line); background: #242321; color: #bcb4a5; }
+
+body .app-shell .contact-page .contact-form label,
+body .app-shell .modal label { color: #ddd5c6; }
+body .app-shell .error-message,
+body .app-shell .settings-error,
+body .app-shell .form-error { border-color: rgba(198, 126, 97, .25); background: #382722; color: #e4ad91; }
+body .app-shell .success-message { border-color: rgba(199, 168, 110, .2); background: #302b20; color: #ddc48f; }
+
+.login-page,
+.auth-page {
+  background: radial-gradient(ellipse at 18% 12%, rgba(179, 145, 79, .12), transparent 34%), radial-gradient(ellipse at 92% 85%, rgba(130, 105, 62, .11), transparent 38%), #101010;
+}
+
+.login-card,
+.invitation-card {
+  border-color: rgba(225, 211, 184, .15);
+  background: linear-gradient(150deg, #1f1e1b, #161615);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .48), 0 3px 10px rgba(0, 0, 0, .28);
+}
+
+.login-card .brand,
+.login-header h1,
+.invitation-card h1 { color: var(--lux-text); }
+.login-card label,
+.invitation-card label { color: #ddd5c6; }
+.login-header p:last-child,
+.auth-subtitle { color: var(--lux-muted); }
+.login-card .primary-button,
+.invitation-card .primary-button { border-color: var(--lux-gold); background: linear-gradient(135deg, #d5bb86, #b39258); color: #171512; }
+.login-card .secondary-button { border-color: transparent; background: transparent; color: var(--lux-gold-light); box-shadow: none; }
+.invitation-icon,
+.invitation-success-icon { border: 1px solid var(--lux-line); background: #292722; color: var(--lux-gold-light); }
+.invitation-info { border-color: var(--lux-line); background: #242321; color: #bcb4a5; }
+.invitation-footer { color: #928b7e; }
+
+.mobile-topbar { border-color: var(--lux-line); background: rgba(23, 22, 21, .96); }
+.mobile-brand { color: var(--lux-text); }
+.mobile-menu-toggle { border-color: var(--lux-line); background: #242321; color: var(--lux-gold-light); }
+.mobile-sidebar-backdrop { background: rgba(0, 0, 0, .68); }
+
+@media (max-width: 768px) {
+  body .app-shell .sidebar { background: linear-gradient(180deg, #181716, #111110); }
+}
