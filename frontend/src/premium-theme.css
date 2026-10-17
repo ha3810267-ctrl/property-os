@@ -459,3 +459,44 @@ body .app-shell .dashboard-page.maintenance-page .maintenance-card .maintenance-
 body .app-shell .dashboard-page.maintenance-page .maintenance-card .contractor-trade {
   color: #bdb6a9;
 }
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-section {
+  margin-top: 22px;
+  padding: 19px;
+  border: 1px solid rgba(225, 211, 184, .13) !important;
+  border-radius: 15px;
+  background: #171716 !important;
+  color: #f1ede5;
+}
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-header {
+  margin-bottom: 16px;
+}
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-title-row .ai-assignment {
+  color: #d6bb85;
+}
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-count {
+  border: 1px solid rgba(199, 168, 110, .22);
+  background: #302b20;
+  color: #e2c98f;
+}
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-header h3 {
+  color: #f1ede5;
+}
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-header p {
+  color: #bdb6a9;
+}
+
+body .app-shell .dashboard-page.maintenance-page .external-worker-card {
+  background: #242321 !important;
+}
+
+@media (max-width: 640px) {
+  body .app-shell .dashboard-page.maintenance-page .external-worker-section {
+    padding: 14px;
+  }
+}
