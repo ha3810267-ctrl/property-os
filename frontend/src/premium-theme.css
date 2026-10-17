@@ -353,3 +353,61 @@ body .app-shell .success-message { border-color: rgba(199, 168, 110, .2); backgr
 @media (max-width: 768px) {
   body .app-shell .sidebar { background: linear-gradient(180deg, #181716, #111110); }
 }
+
+/* Final legibility pass: normalize inherited legacy text colors. */
+body .app-shell :is(p, span, label, strong, small, em, li, dt, dd, th, td) {
+  color: #e6e0d3;
+}
+
+body .app-shell :is(.page-subtitle, .page-description, .card-subtitle,
+  .stat-card-top p, .stat-card > span, .empty-state p, .property-card p,
+  .dashboard-maintenance-content > p, .dashboard-maintenance-meta,
+  .settings-section-header p, .settings-label, .maintenance-description,
+  .maintenance-meta, .external-worker-header p, .contractor-trade,
+  .contractor-stat span, .contractor-match-top span, .match-reason,
+  .contractor-reply-summary span, .how-to-intro p, .how-to-step-content p,
+  .how-to-support > p, .how-to-support-step p, .how-to-refund p,
+  .how-to-footer p, .contact-privacy, .invitation-footer) {
+  color: #bdb6a9;
+}
+
+body .app-shell :is(.section-label, .external-worker-header h3,
+  .external-worker-identity strong, .contractor-stat strong,
+  .contractor-reply-summary strong, .contractor-replies-header .section-label,
+  .contractor-reply-subject strong, .contractor-reply-meta strong,
+  .contractor-reply-subject span, .contractor-reply-meta span,
+  .contractor-match-top strong, .match-score-badge strong) {
+  color: #eee7d9;
+}
+
+body .app-shell :is(.ai-assignment, .external-worker-count,
+  .selected-badge, .match-score-badge span, .contractor-reply-count,
+  .property-count, .properties-count, .contractor-contact-row > span,
+  .contractor-contact-row > a) {
+  color: #d3c7ad;
+}
+
+body .app-shell .text-button,
+body .app-shell .how-to-action,
+body .app-shell .how-to-refund h3,
+body .app-shell .contractor-contact-row a:hover { color: #e0c58d; }
+
+body .app-shell .form-error,
+body .app-shell .error-message,
+body .app-shell .settings-error,
+body .app-shell .contact-feedback.error { color: #efb39a; }
+
+body .app-shell .success-message,
+body .app-shell .contact-feedback.success { color: #e2c98f; }
+
+body .app-shell .priority-badge.high,
+body .app-shell .priority-badge.urgent { color: #efb39a; }
+body .app-shell .priority-badge.normal { color: #e2c98f; }
+body .app-shell .priority-badge.low { color: #c9c2b6; }
+
+.login-page :is(p, span, label, strong, small) { color: #e6e0d3; }
+.login-page .login-header p:last-child { color: #bdb6a9; }
+.login-page .form-error { color: #efb39a; }
+.auth-page :is(p, span, label, strong, small) { color: #e6e0d3; }
+.auth-page .auth-subtitle,
+.auth-page .invitation-footer { color: #bdb6a9; }
