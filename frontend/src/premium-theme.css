@@ -495,6 +495,78 @@ body .app-shell .dashboard-page.maintenance-page .external-worker-card {
   background: #242321 !important;
 }
 
+/* Auth fields still had pale surfaces in both legacy stylesheets. */
+.login-page .login-card input,
+.auth-page .invitation-card input {
+  border-color: rgba(225, 211, 184, .16);
+  background: #131312;
+  color: #f1ede5;
+}
+
+.login-page .login-card input::placeholder,
+.auth-page .invitation-card input::placeholder { color: #89847b; }
+
+.login-page .login-card input:focus,
+.auth-page .invitation-card input:focus {
+  border-color: #ad905c;
+  background: #1a1916;
+  box-shadow: 0 0 0 3px rgba(199, 168, 110, .12);
+}
+
+.login-page .login-card input:disabled,
+.auth-page .invitation-card input:disabled {
+  background: #242321;
+  color: #aaa49a;
+}
+
+.login-page .login-card .secondary-button { color: #ddc38d; }
+.login-page .login-card .secondary-button:hover { color: #f0dfbb; }
+
+/* The modal's legacy maintenance selectors are more specific than the shared form styles. */
+body .app-shell .dashboard-page.maintenance-page .modal select,
+body .app-shell .dashboard-page.maintenance-page .modal textarea {
+  border-color: rgba(225, 211, 184, .16);
+  background: #131312;
+  color: #f1ede5;
+}
+
+body .app-shell .dashboard-page.maintenance-page .modal select:focus,
+body .app-shell .dashboard-page.maintenance-page .modal textarea:focus {
+  border-color: #ad905c;
+  background: #1a1916;
+  box-shadow: 0 0 0 3px rgba(199, 168, 110, .12);
+}
+
+body .app-shell .dashboard-page.maintenance-page .modal .icon-button {
+  border-color: var(--lux-line);
+  background: #242321;
+  color: #ded7ca;
+}
+
+body .app-shell .dashboard-page.maintenance-page .modal .primary-button {
+  border-color: var(--lux-gold);
+  background: linear-gradient(135deg, #d5bb86, #b39258);
+  color: #171512;
+}
+
+body .app-shell .dashboard-page.maintenance-page .modal .secondary-button {
+  border-color: var(--lux-line);
+  background: #242321;
+  color: #e3d8c2;
+}
+
+body .app-shell .contact-page .contact-feedback.success {
+  border-color: rgba(199, 168, 110, .2);
+  background: #302b20;
+  color: #e2c98f;
+}
+
+body .app-shell .contact-page .contact-feedback.error {
+  border-color: rgba(198, 126, 97, .25);
+  background: #382722;
+  color: #efb39a;
+}
+
 @media (max-width: 640px) {
   body .app-shell .dashboard-page.maintenance-page .external-worker-section {
     padding: 14px;
