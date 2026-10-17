@@ -716,3 +716,89 @@ body .app-shell .dashboard-reply-view-request:hover { color: #f0dfbb; }
     padding: 14px;
   }
 }
+
+/* Expandable service request cards retain the existing card palette. */
+body .app-shell .maintenance-page > .maintenance-list > .maintenance-card {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+body .app-shell .maintenance-page .maintenance-request-toggle {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 20px 22px;
+  border: 0;
+  background: transparent;
+  color: var(--lux-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+body .app-shell .maintenance-page .maintenance-request-toggle:hover {
+  background: rgba(255, 255, 255, .025);
+}
+
+body .app-shell .maintenance-page .maintenance-request-toggle:focus-visible {
+  outline: 2px solid var(--lux-gold);
+  outline-offset: -3px;
+}
+
+body .app-shell .maintenance-page .maintenance-request-summary {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+}
+
+body .app-shell .maintenance-page .maintenance-request-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+body .app-shell .maintenance-page .maintenance-request-heading strong {
+  color: var(--lux-text);
+  font-size: 16px;
+}
+
+body .app-shell .maintenance-page .maintenance-request-description {
+  color: #bdb6a9;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+body .app-shell .maintenance-page .maintenance-request-summary .maintenance-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  color: var(--lux-muted);
+  font-size: 11px;
+}
+
+body .app-shell .maintenance-page .maintenance-request-chevron {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding-top: 2px;
+  color: var(--lux-gold-light);
+}
+
+body .app-shell .maintenance-page > .maintenance-list > .maintenance-card > .maintenance-card-main {
+  padding: 0 22px 18px;
+}
+
+@media (max-width: 640px) {
+  body .app-shell .maintenance-page .maintenance-request-toggle {
+    gap: 11px;
+    padding: 16px;
+  }
+
+  body .app-shell .maintenance-page > .maintenance-list > .maintenance-card > .maintenance-card-main {
+    padding: 0 16px 16px;
+  }
+}

@@ -38,6 +38,7 @@ export default function Maintenance() {
     useState(() => new Set(activeExternalWorkerSearches))
 
   const [expandedReplies, setExpandedReplies] = useState({})
+  const [expandedRequests, setExpandedRequests] = useState({})
 
   async function loadData() {
     try {
@@ -130,6 +131,13 @@ export default function Maintenance() {
   function isReplyExpanded(requestId, candidateId, replyId) {
     const key = `${requestId}-${candidateId}-${replyId}`
     return expandedReplies[key] === true
+  }
+
+  function toggleRequest(requestId) {
+    setExpandedRequests((current) => ({
+      ...current,
+      [requestId]: !current[requestId],
+    }))
   }
 
   function formatReplyDate(date) {
@@ -465,50 +473,44 @@ export default function Maintenance() {
                 searchingExternalWorker.has(request.id)
 
               return (
-                <div
+                <section
                   className={`maintenance-card priority-${request.priority}`}
                   key={request.id}
                 >
-                  <div className="maintenance-card-main">
-                    <div className="maintenance-icon">
+                  <button
+                    type="button"
+                    className="maintenance-request-toggle"
+                    aria-expanded={expandedRequests[request.id] === true}
+                    onClick={() => toggleRequest(request.id)}
+                  >
+                    <span className="maintenance-icon">
                       <Wrench size={20} />
-                    </div>
-
-                    <div className="maintenance-content">
-                      <div className="maintenance-top">
-                        <h2>
-                          {request.category || "Service request"}
-                        </h2>
-
-                        <span
-                          className={`priority-badge ${request.priority}`}
-                        >
+                    </span>
+                    <span className="maintenance-request-summary">
+                      <span className="maintenance-request-heading">
+                        <strong>{request.category || "Service request"}</strong>
+                        <span className={`priority-badge ${request.priority}`}>
                           {request.priority}
                         </span>
-                      </div>
-
-                      <p className="maintenance-description">
+                      </span>
+                      <span className="maintenance-request-description">
                         {request.description}
-                      </p>
+                      </span>
+                      <span className="maintenance-meta">
+                        <span>{property?.name || "Associated property"}</span>
+                        <span>{request.location || property?.address || "Location unavailable"}</span>
+                        <span>{new Date(request.created_at).toLocaleDateString()}</span>
+                      </span>
+                    </span>
+                    <span className="maintenance-request-chevron" aria-hidden="true">
+                      {expandedRequests[request.id] ? <ChevronUp size={19} /> : <ChevronDown size={19} />}
+                    </span>
+                  </button>
 
-                      <div className="maintenance-meta">
-                        <span>
-                          {property?.name || "Associated property"}
-                        </span>
-
-                        <span>
-                          {request.location ||
-                            property?.address ||
-                            "Location unavailable"}
-                        </span>
-
-                        <span>
-                          {new Date(
-                            request.created_at
-                          ).toLocaleDateString()}
-                        </span>
-                      </div>
-
+                  {expandedRequests[request.id] && (
+                    <>
+                  <div className="maintenance-card-main">
+                    <div className="maintenance-content">
                       {!selectedExternalWorker && (
                         <div className="external-worker-search">
                           <div>
@@ -803,7 +805,9 @@ export default function Maintenance() {
                       <Trash2 size={16} />
                     </button>
                   </div>
-                </div>
+                    </>
+                  )}
+                </section>
               )
             })}
           </div>
