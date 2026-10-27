@@ -3178,6 +3178,12 @@ select:focus-visible {
   color: #203429;
 }
 
+.dashboard-page:not(.contact-page) > .page-header h1,
+.contact-page .properties-title h1,
+.account-page > .page-header h1 {
+  color: #fff;
+}
+
 .settings-section {
   margin-bottom: 21px;
 }
@@ -3197,6 +3203,13 @@ select:focus-visible {
 .settings-row {
   min-height: 72px;
   border-color: #edf1ed;
+}
+
+.settings-row > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .settings-label {

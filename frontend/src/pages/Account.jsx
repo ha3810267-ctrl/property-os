@@ -3,7 +3,6 @@ import { apiRequest } from "../services/api"
 
 export default function Account() {
   const [user, setUser] = useState(null)
-  const [organisation, setOrganisation] = useState(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -25,15 +24,6 @@ export default function Account() {
 
         const currentUser = await apiRequest("/me")
         setUser(currentUser)
-
-        const organisations = await apiRequest("/organisations")
-
-        const currentOrganisation = organisations.find(
-          (organisation) =>
-            organisation.id === currentUser.organisation_id
-        )
-
-        setOrganisation(currentOrganisation || null)
       } catch (err) {
         console.error(err)
         setError("Unable to load account details")
@@ -121,7 +111,7 @@ export default function Account() {
 
   if (loading) {
     return (
-      <div className="page">
+      <div className="page account-page">
         <div className="page-header">
           <div>
             <h1>Account</h1>
@@ -135,7 +125,7 @@ export default function Account() {
   }
 
   return (
-    <div className="page">
+    <div className="page account-page">
       <div className="page-header">
         <div>
           <h1>Account</h1>
@@ -185,33 +175,6 @@ export default function Account() {
                         letter.toUpperCase()
                       )
                   : "—"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <h2>Workspace</h2>
-          <p>Details about your ServiceOS workspace</p>
-        </div>
-
-        <div className="settings-card">
-          <div className="settings-row">
-            <div>
-              <span className="settings-label">Workspace name</span>
-              <span className="settings-value">
-                {organisation?.name || "—"}
-              </span>
-            </div>
-          </div>
-
-          <div className="settings-row">
-            <div>
-              <span className="settings-label">Workspace ID</span>
-              <span className="settings-value">
-                {organisation?.id || "—"}
               </span>
             </div>
           </div>
