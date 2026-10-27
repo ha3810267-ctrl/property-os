@@ -1356,6 +1356,7 @@ Return ONLY JSON in this format:
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
+      "website": "https://business-homepage.co.uk",
       "phone": "01234567890",
       "email": "info@business.co.uk",
       "source_url": "https://real-source-page.co.uk"
@@ -1374,43 +1375,55 @@ Rules:
 
 4. If a field cannot be verified, return null.
 
-5. Do not include a website field or return a business
-   website URL.
+5. The website must be the actual business homepage.
 
-6. The phone number must be an actual publicly listed
+6. The website must NOT be an image.
+
+7. The website must NOT be a file or uploaded asset.
+
+8. Never return URLs ending in .jpg .jpeg .png .webp
+   .gif .svg .pdf or similar file extensions.
+
+9. Never return URLs containing /wp-content/uploads/.
+
+10. Do not construct a website from the business name.
+
+11. Do not construct contact URLs.
+
+12. The phone number must be an actual publicly listed
     business phone number.
 
-7. Find the business email using Google Search grounding
-   and current public web information. Return it in the
-   email field only when it is publicly listed and clearly
-   associated with that business; otherwise return null.
+13. The email must be an actual publicly listed
+    business email.
 
-8. The location must be supported by search evidence.
+14. The location must be supported by search evidence.
 
-9. The rating and review count must be supported by
+15. The rating and review count must be supported by
     search evidence.
 
-10. source_url must be an actual URL from the search
+16. source_url must be an actual URL from the search
     evidence.
 
-11. Only return businesses relevant to the requested
+17. Prefer the official business website when available.
+
+18. Only return businesses relevant to the requested
     trades.
 
-12. Strongly prioritise geographic proximity to the
+19. Strongly prioritise geographic proximity to the
     target property.
 
-13. Prefer businesses that explicitly state they serve
+20. Prefer businesses that explicitly state they serve
     the target area.
 
-14. Do not return businesses already listed above.
+21. Do not return businesses already listed above.
 
-15. A business must appear only once.
+22. A business must appear only once.
 
-16. Missing information must be null.
+23. Missing information must be null.
 
-17. Do not output explanations.
+24. Do not output explanations.
 
-18. Do not output markdown.
+25. Do not output markdown.
 """
 
 
@@ -1473,6 +1486,13 @@ def _request_gemini_provider_batch(
                                     },
 
                                     "availability": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
+                                    },
+
+                                    "website": {
                                         "type": [
                                             "string",
                                             "null"
@@ -1887,7 +1907,17 @@ def search_external_workers(
                 continue
 
             # -------------------------------------------------
-            # PROCESS SEARCH RESULTS
+            # PARALLEL WEBSITE VERIFICATION
+            # -------------------------------------------------
+
+            verification_results = (
+                _verify_provider_websites_parallel(
+                    prepared_providers
+                )
+            )
+
+            # -------------------------------------------------
+            # PROCESS VERIFIED RESULTS
             # -------------------------------------------------
 
             for index, provider in enumerate(
@@ -1921,10 +1951,21 @@ def search_external_workers(
                     provider.get("availability")
                 )
 
-                # Gemini returns publicly listed emails directly
-                # from grounded search results. Website URLs are
-                # deliberately not requested or persisted.
-                website = None
+                verification = (
+                    verification_results[index]
+                    if index < len(
+                        verification_results
+                    )
+                    else {
+                        "website": None,
+                        "email": None,
+                        "phone": None,
+                    }
+                )
+
+                website = verification.get(
+                    "website"
+                )
 
                 phone = _normalise_phone(
                     provider.get("phone")
@@ -1933,6 +1974,18 @@ def search_external_workers(
                 email = _normalise_email(
                     provider.get("email")
                 )
+
+                # Prefer information actually found on the
+                # exact verified business website.
+                if verification.get("phone"):
+                    phone = verification[
+                        "phone"
+                    ]
+
+                if verification.get("email"):
+                    email = verification[
+                        "email"
+                    ]
 
                 # -------------------------------------------------
                 # PUBLIC EMAIL REQUIREMENT
@@ -2950,7 +3003,7 @@ RELEVANCE RULES:
 - The "trade" field is a general provider specialty label.
   It can describe ANY legitimate service category.
 - Never invent a provider or claim an unverified service.
-  - Find a publicly listed email through grounded search.
+- Prefer the provider's official website.
 
 Return ONLY valid JSON in this format:
 
@@ -2963,6 +3016,7 @@ Return ONLY valid JSON in this format:
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
+      "website": "https://official-business-homepage.example",
       "phone": "Publicly listed phone number or null",
       "email": "Publicly listed email or null",
       "source_url": "Actual source URL"
@@ -2972,21 +3026,22 @@ Return ONLY valid JSON in this format:
 
 FIELD RULES:
 1. Only return real providers supported by search evidence.
-2. Never invent a business, person, phone or email.
+2. Never invent a business, person, website, phone or email.
 3. Return null for information that cannot be verified.
-4. Do not include a website field or return a business
-   website URL.
-5. The phone and email must be publicly listed. Only return
-   an email when search evidence clearly associates it with
-   the provider; otherwise return null.
-6. The location must be supported by search evidence.
-7. Ratings and review counts must be supported by evidence.
-8. source_url must be an actual URL from search evidence.
-9. Only return providers relevant to the requested services.
-10. A provider must appear only once.
-11. Do not return any business listed above.
-12. Missing information must be null.
-13. Do not output explanations or markdown.
+4. The website must be the actual provider homepage.
+5. Do not return images, files or uploaded assets as websites.
+6. Do not construct websites from provider names.
+7. Do not construct contact URLs.
+8. The phone and email must be publicly listed.
+9. The location must be supported by search evidence.
+10. Ratings and review counts must be supported by evidence.
+11. source_url must be an actual URL from search evidence.
+12. Prefer the official provider website when available.
+13. Only return providers relevant to the requested services.
+14. A provider must appear only once.
+15. Do not return any business listed above.
+16. Missing information must be null.
+17. Do not output explanations or markdown.
 """
 
 
@@ -3024,6 +3079,9 @@ def _request_gemini_provider_batch(client, prompt):
                                     "availability": {
                                         "type": ["string", "null"]
                                     },
+                                    "website": {
+                                        "type": ["string", "null"]
+                                    },
                                     "phone": {
                                         "type": ["string", "null"]
                                     },
@@ -3057,8 +3115,9 @@ def _request_gemini_provider_batch(client, prompt):
             f"Gemini provider search failed: {exc}"
         ) from exc
 
-    raw_output = getattr(response, "output_text", None)
-    output = _clean_json_response(raw_output)
+    output = _clean_json_response(
+        getattr(response, "output_text", None)
+    )
 
     if not output:
         return []
@@ -3066,11 +3125,6 @@ def _request_gemini_provider_batch(client, prompt):
     data = _parse_provider_json(output)
 
     if data is None:
-        print(
-            "[external search] Gemini raw response before JSON parse failure: "
-            f"{raw_output!r}",
-            flush=True,
-        )
         raise ValueError(
             "Gemini returned malformed provider JSON"
         )
@@ -3234,6 +3288,12 @@ def search_external_workers(
             if not prepared_providers:
                 continue
 
+            verification_results = (
+                _verify_provider_websites_parallel(
+                    prepared_providers
+                )
+            )
+
             for index, provider in enumerate(prepared_providers):
                 if len(candidates) >= TARGET_CONTRACTORS:
                     break
@@ -3254,11 +3314,19 @@ def search_external_workers(
                     provider.get("availability")
                 )
 
-                # Website URLs are not requested or persisted. Gemini
-                # finds publicly listed emails through grounded search.
-                website = None
-                phone = _normalise_phone(provider.get("phone"))
-                email = _normalise_email(provider.get("email"))
+                verification = verification_results[index]
+
+                website = verification.get("website")
+
+                phone = (
+                    _normalise_phone(provider.get("phone"))
+                    or verification.get("phone")
+                )
+
+                email = (
+                    verification.get("email")
+                    or _normalise_email(provider.get("email"))
+                )
 
                 if not _is_valid_public_email(email):
                     print(
