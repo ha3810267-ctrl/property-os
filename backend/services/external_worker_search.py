@@ -3003,7 +3003,6 @@ RELEVANCE RULES:
 - The "trade" field is a general provider specialty label.
   It can describe ANY legitimate service category.
 - Never invent a provider or claim an unverified service.
-- Prefer the provider's official website.
 
 Return ONLY valid JSON in this format:
 
@@ -3016,7 +3015,6 @@ Return ONLY valid JSON in this format:
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
-      "website": "https://official-business-homepage.example",
       "phone": "Publicly listed phone number or null",
       "email": "Publicly listed email or null",
       "source_url": "Actual source URL"
@@ -3026,22 +3024,18 @@ Return ONLY valid JSON in this format:
 
 FIELD RULES:
 1. Only return real providers supported by search evidence.
-2. Never invent a business, person, website, phone or email.
+2. Never invent a business, person, phone or email.
 3. Return null for information that cannot be verified.
-4. The website must be the actual provider homepage.
-5. Do not return images, files or uploaded assets as websites.
-6. Do not construct websites from provider names.
-7. Do not construct contact URLs.
-8. The phone and email must be publicly listed.
-9. The location must be supported by search evidence.
-10. Ratings and review counts must be supported by evidence.
-11. source_url must be an actual URL from search evidence.
-12. Prefer the official provider website when available.
-13. Only return providers relevant to the requested services.
-14. A provider must appear only once.
-15. Do not return any business listed above.
-16. Missing information must be null.
-17. Do not output explanations or markdown.
+4. Do not include a website or homepage field.
+5. The phone and email must be publicly listed.
+6. The location must be supported by search evidence.
+7. Ratings and review counts must be supported by evidence.
+8. source_url must be an actual URL from search evidence.
+9. Only return providers relevant to the requested services.
+10. A provider must appear only once.
+11. Do not return any business listed above.
+12. Missing information must be null.
+13. Do not output explanations or markdown.
 """
 
 
@@ -3077,9 +3071,6 @@ def _request_gemini_provider_batch(client, prompt):
                                         "type": ["integer", "null"]
                                     },
                                     "availability": {
-                                        "type": ["string", "null"]
-                                    },
-                                    "website": {
                                         "type": ["string", "null"]
                                     },
                                     "phone": {
@@ -3133,8 +3124,14 @@ def _request_gemini_provider_batch(client, prompt):
         return []
 
     providers = data.get("providers", [])
+    if not isinstance(providers, list):
+        return []
 
-    return providers if isinstance(providers, list) else []
+    for provider in providers:
+        if isinstance(provider, dict):
+            provider.pop("website", None)
+
+    return providers
 
 
 def _discover_provider_batch(
@@ -3288,12 +3285,6 @@ def search_external_workers(
             if not prepared_providers:
                 continue
 
-            verification_results = (
-                _verify_provider_websites_parallel(
-                    prepared_providers
-                )
-            )
-
             for index, provider in enumerate(prepared_providers):
                 if len(candidates) >= TARGET_CONTRACTORS:
                     break
@@ -3314,19 +3305,8 @@ def search_external_workers(
                     provider.get("availability")
                 )
 
-                verification = verification_results[index]
-
-                website = verification.get("website")
-
-                phone = (
-                    _normalise_phone(provider.get("phone"))
-                    or verification.get("phone")
-                )
-
-                email = (
-                    verification.get("email")
-                    or _normalise_email(provider.get("email"))
-                )
+                phone = _normalise_phone(provider.get("phone"))
+                email = _normalise_email(provider.get("email"))
 
                 if not _is_valid_public_email(email):
                     print(
@@ -3392,7 +3372,7 @@ def search_external_workers(
                     rating=rating,
                     review_count=review_count,
                     availability=availability,
-                    website=website,
+                    website=None,
                     phone=phone,
                     email=email,
                     source_url=source_url,

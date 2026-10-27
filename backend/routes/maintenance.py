@@ -164,7 +164,6 @@ def maintenance_request_response(
                 "name": candidate.name,
                 "trade": candidate.trade,
                 "location": candidate.location,
-                "website": candidate.website,
                 "phone": candidate.phone,
                 "email": candidate.email,
                 "source_url": candidate.source_url,
