@@ -3057,9 +3057,8 @@ def _request_gemini_provider_batch(client, prompt):
             f"Gemini provider search failed: {exc}"
         ) from exc
 
-    output = _clean_json_response(
-        getattr(response, "output_text", None)
-    )
+    raw_output = getattr(response, "output_text", None)
+    output = _clean_json_response(raw_output)
 
     if not output:
         return []
@@ -3067,6 +3066,11 @@ def _request_gemini_provider_batch(client, prompt):
     data = _parse_provider_json(output)
 
     if data is None:
+        print(
+            "[external search] Gemini raw response before JSON parse failure: "
+            f"{raw_output!r}",
+            flush=True,
+        )
         raise ValueError(
             "Gemini returned malformed provider JSON"
         )
