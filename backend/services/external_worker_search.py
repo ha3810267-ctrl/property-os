@@ -3106,25 +3106,49 @@ def _request_gemini_provider_batch(client, prompt):
             f"Gemini provider search failed: {exc}"
         ) from exc
 
-    output = _clean_json_response(
-        getattr(response, "output_text", None)
-    )
+    raw_output = getattr(response, "output_text", None)
+    output = _clean_json_response(raw_output)
 
     if not output:
+        try:
+            response_debug = response.model_dump(exclude_none=False)
+        except (AttributeError, TypeError, ValueError):
+            response_debug = repr(response)
+
+        print(
+            "[external search] Gemini returned no parseable text; "
+            f"raw output={raw_output!r}, response={response_debug!r}",
+            flush=True,
+        )
         return []
 
     data = _parse_provider_json(output)
 
     if data is None:
+        print(
+            "[external search] Gemini raw output before JSON parse "
+            f"failure: {raw_output!r}",
+            flush=True,
+        )
         raise ValueError(
             "Gemini returned malformed provider JSON"
         )
 
     if not isinstance(data, dict):
+        print(
+            "[external search] Gemini returned JSON with an invalid "
+            f"top-level type; raw output={raw_output!r}",
+            flush=True,
+        )
         return []
 
     providers = data.get("providers", [])
     if not isinstance(providers, list):
+        print(
+            "[external search] Gemini returned a non-list providers "
+            f"value; raw output={raw_output!r}",
+            flush=True,
+        )
         return []
 
     for provider in providers:
