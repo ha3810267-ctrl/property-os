@@ -929,7 +929,7 @@ FIELD RULES:
 def _request_gemini_provider_batch(client, prompt):
     try:
         response = client.interactions.create(
-            model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+            model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
             input=prompt,
             tools=[{"type": "google_search"}],
             response_format={
