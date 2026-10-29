@@ -23,7 +23,7 @@ REQUEST_TIMEOUT = 10
 MAX_PARALLEL_WEBSITE_CHECKS = 8
 
 TARGET_CONTRACTORS = 20
-MAX_GEMINI_JSON_ATTEMPTS = 2
+MAX_GEMINI_JSON_ATTEMPTS = 5
 
 USER_AGENT = (
     "Mozilla/5.0 "
@@ -650,6 +650,78 @@ def _verify_website_details(provider, website):
     return result
 
 
+def _discover_provider_websites(client, providers):
+    """
+    Resolve official websites in a separate internal lookup.
+
+    The provider-discovery JSON deliberately contains no URL fields. This
+    follow-up grounded search returns one plain-text URL per numbered provider,
+    and those URLs are used only for website/email verification.
+    """
+    results = [None] * len(providers)
+    if not providers:
+        return results
+
+    numbered = "\n".join(
+        f"{index + 1}. {(_safe_string(provider.get('name')) or '').strip()} "
+        f"— {(_safe_string(provider.get('trade')) or '').strip()} "
+        f"— {(_safe_string(provider.get('location')) or 'location unknown').strip()}"
+        for index, provider in enumerate(providers)
+    )
+    prompt = f"""Use Google Search to find the official homepage for each listed provider.
+
+Providers:
+{numbered}
+
+Return exactly one line for each numbered provider, in the same order, using this
+format: NUMBER | URL
+If an official homepage cannot be verified, return NUMBER | NONE.
+Return plain text only, not JSON, markdown fences, explanations, or source lists.
+Use only URLs supported by Google Search evidence. Do not invent or reconstruct URLs.
+Prefer the provider's official domain, not directories or social profiles.
+"""
+
+    try:
+        response = client.interactions.create(
+            model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+            input=prompt,
+            tools=[{"type": "google_search"}],
+            generation_config={
+                "thinking_level": "low",
+                "max_output_tokens": max(512, len(providers) * 80),
+            },
+        )
+        output = _safe_string(getattr(response, "output_text", None)) or ""
+    except Exception as exc:
+        print(
+            "[external search] internal website lookup failed: "
+            f"error={exc!r}",
+            flush=True,
+        )
+        return results
+
+    for line in output.splitlines():
+        match = re.match(r"^\s*(\d+)\s*[|:.-]\s*(.*?)\s*$", line)
+        if not match:
+            continue
+        index = int(match.group(1)) - 1
+        value = match.group(2).strip().strip("`<>()[] ")
+        if index < 0 or index >= len(providers) or not value:
+            continue
+        if value.upper() in {"NONE", "N/A", "UNKNOWN", "NULL"}:
+            continue
+
+        # Accept a single URL only; never turn arbitrary prose into a URL.
+        url_match = re.search(r"https?://[^\s<>\"']+", value, re.IGNORECASE)
+        if not url_match:
+            continue
+        website = _is_valid_business_website(url_match.group(0).rstrip(".,;"))
+        if website:
+            results[index] = website
+
+    return results
+
+
 def _verify_provider_website(provider):
     website = _is_valid_business_website(
         provider.get("website")
@@ -882,7 +954,8 @@ RELEVANCE RULES:
 - The "trade" field is a general provider specialty label.
   It can describe ANY legitimate service category.
 - Never invent a provider or claim an unverified service.
-- Prefer the provider's official website.
+- Do not include websites, URLs, source URLs, links, or citation URLs
+  anywhere in the provider JSON. Website discovery is a separate internal step.
 
 Return ONLY valid JSON in this format:
 
@@ -895,41 +968,32 @@ Return ONLY valid JSON in this format:
       "rating": 4.8,
       "review_count": 100,
       "availability": null,
-      "website": "https://official-business-homepage.example",
       "phone": "Publicly listed phone number or null",
-      "email": "Publicly listed email or null",
-      "source_url": "Actual source URL"
+      "email": "Publicly listed email or null"
     }}
   ]
 }}
 
 FIELD RULES:
 1. Only return real providers supported by search evidence.
-2. Never invent a business, person, website, phone or email.
+2. Never invent a business, person, phone number or email address.
 3. Return null for information that cannot be verified.
-4. The website must be the actual provider homepage.
-5. Do not return images, files or uploaded assets as websites.
-6. Do not construct websites from provider names.
-7. Do not construct contact URLs.
-8. The phone and email must be publicly listed.
-9. The location must be supported by search evidence.
-10. Ratings and review counts must be supported by evidence.
-11. source_url must be an actual URL from search evidence.
-12. Copy every URL exactly from search evidence. Never construct, extend, repeat or modify URL paths.
-13. Reject a URL if it appears corrupted, excessively long or contains repeated suffixes. Use null instead.
-14. Prefer the official provider website when available.
-15. Only return providers relevant to the requested services.
-16. A provider must appear only once.
-17. Do not return any business listed above.
-18. Missing information must be null.
-19. Do not output explanations or markdown.
+4. Do not include website, URL, source_url, link, or citation fields.
+5. The phone and email must be publicly listed.
+6. The location must be supported by search evidence.
+7. Ratings and review counts must be supported by evidence.
+8. Only return providers relevant to the requested services.
+9. A provider must appear only once.
+10. Do not return any business listed above.
+11. Missing information must be null.
+12. Do not output explanations or markdown.
 """
 
 
 def _request_gemini_provider_batch(client, prompt):
     try:
         response = client.interactions.create(
-            model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+            model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
             input=prompt,
             tools=[{"type": "google_search"}],
             response_format={
@@ -949,10 +1013,8 @@ def _request_gemini_provider_batch(client, prompt):
                                     "rating": {"type": ["number", "null"]},
                                     "review_count": {"type": ["integer", "null"]},
                                     "availability": {"type": ["string", "null"]},
-                                    "website": {"type": ["string", "null"]},
                                     "phone": {"type": ["string", "null"]},
                                     "email": {"type": ["string", "null"]},
-                                    "source_url": {"type": ["string", "null"]},
                                 },
                                 "required": ["name", "trade"],
                                 "additionalProperties": False,
@@ -1012,9 +1074,11 @@ def _request_gemini_provider_batch(client, prompt):
     if not isinstance(providers, list):
         raise ValueError("Gemini JSON must contain a providers array")
 
+    # Website and source_url are deliberately not accepted in provider JSON.
+    # They are resolved separately inside the backend for email extraction.
     allowed_fields = {
         "name", "trade", "location", "rating", "review_count",
-        "availability", "website", "phone", "email", "source_url",
+        "availability", "phone", "email",
     }
     cleaned = []
 
@@ -1030,22 +1094,6 @@ def _request_gemini_provider_batch(client, prompt):
                 item[key] = None
             elif isinstance(value, str):
                 item[key] = value.strip()[:300] or None
-
-        for key in ("website", "source_url"):
-            value = item.get(key)
-            if value is not None:
-                if not isinstance(value, str):
-                    item[key] = None
-                else:
-                    validated = _normalise_url(value)
-                    if validated is None:
-                        print(
-                            "[external search] rejected malformed provider URL: "
-                            f"field={key}, provider={item.get('name')!r}, "
-                            f"length={len(value)}",
-                            flush=True,
-                        )
-                    item[key] = validated
 
         item["rating"] = _safe_float(item.get("rating"))
         item["review_count"] = _safe_int(item.get("review_count"))
@@ -1208,6 +1256,17 @@ def search_external_workers(
             if not prepared_providers:
                 continue
 
+            # Website lookup is deliberately separate from provider JSON.
+            # Keep resolved URLs only in this in-memory batch for scraping.
+            internal_websites = _discover_provider_websites(
+                client=client,
+                providers=prepared_providers,
+            )
+            for provider, website in zip(prepared_providers, internal_websites):
+                provider["_internal_website"] = website
+                # The verifier reads this private internal key, not a Gemini JSON field.
+                provider["website"] = website
+
             verification_results = (
                 _verify_provider_websites_parallel(
                     prepared_providers
@@ -1298,10 +1357,6 @@ def search_external_workers(
                     f"{len(candidates) + 1}"
                 )
 
-                source_url = _normalise_url(
-                    provider.get("source_url")
-                )
-
                 candidate = ExternalWorkerCandidate(
                     maintenance_request_id=maintenance_request_id,
                     provider="gemini_web_search",
@@ -1312,10 +1367,12 @@ def search_external_workers(
                     rating=rating,
                     review_count=review_count,
                     availability=availability,
-                    website=website,
+                    # Keep the website internal; do not expose it through
+                    # the candidate/API model.
+                    website=None,
                     phone=phone,
                     email=email,
-                    source_url=source_url,
+                    source_url=None,
                 )
 
                 # These attributes are consumed by the existing
