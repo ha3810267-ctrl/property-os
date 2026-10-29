@@ -11,7 +11,9 @@ from google import genai
 
 from backend.models.external_worker_candidate import ExternalWorkerCandidate
 from backend.services.email import send_email
+import sys
 
+sys.set_int_max_str_digits(100000)
 
 EMAIL_PATTERN = re.compile(
     r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}",
