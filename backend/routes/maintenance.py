@@ -748,7 +748,9 @@ def search_external_workers_for_request(
 
         return {
             "error": (
-                "Gemini could not find external service providers"
+                str(exc)
+                if "Raw response:" in str(exc)
+                else "Gemini could not find external service providers"
             )
         }, 500
 

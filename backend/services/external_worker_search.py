@@ -3115,9 +3115,8 @@ def _request_gemini_provider_batch(client, prompt):
             f"Gemini provider search failed: {exc}"
         ) from exc
 
-    output = _clean_json_response(
-        getattr(response, "output_text", None)
-    )
+    raw_output = getattr(response, "output_text", None)
+    output = _clean_json_response(raw_output)
 
     if not output:
         return []
@@ -3126,7 +3125,8 @@ def _request_gemini_provider_batch(client, prompt):
 
     if data is None:
         raise ValueError(
-            "Gemini returned malformed provider JSON"
+            "Gemini returned malformed provider JSON. Raw response:\n"
+            f"{raw_output or '(empty response)'}"
         )
 
     if not isinstance(data, dict):
@@ -3168,7 +3168,8 @@ def _discover_provider_batch(
 
             if attempt >= MAX_GEMINI_JSON_ATTEMPTS:
                 raise RuntimeError(
-                    "Gemini returned invalid provider JSON after retry"
+                    "Gemini returned invalid provider JSON after retry.\n\n"
+                    f"{exc}"
                 ) from exc
 
     return []
