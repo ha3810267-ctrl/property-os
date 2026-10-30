@@ -73,6 +73,7 @@ def _extract_json_object(text):
 
     text = text.strip().lstrip("\ufeff")
     start = text.find("{")
+
     if start < 0:
         return ""
 
@@ -98,32 +99,47 @@ def _extract_json_object(text):
             depth += 1
         elif char == "}":
             depth -= 1
+
             if depth == 0:
                 return text[start:index + 1].strip()
 
-    # No complete object was returned; likely truncated output.
     return ""
 
 
 def _parse_provider_json(output):
-    """Parse complete JSON only; never try to guess missing syntax."""
+    """
+    Parse provider JSON while allowing individual malformed
+    candidates to be handled separately by the batch parser.
+    """
     output = _clean_json_response(output)
+
     if not output:
         return None
 
     try:
-        return json.loads(output)
-    except (json.JSONDecodeError, TypeError):
+        data = json.loads(output)
+
+        if isinstance(data, dict):
+            return data
+
+    except (json.JSONDecodeError, TypeError, ValueError):
         pass
 
     extracted = _extract_json_object(output)
+
     if not extracted:
         return None
 
     try:
-        return json.loads(extracted)
-    except (json.JSONDecodeError, TypeError):
-        return None
+        data = json.loads(extracted)
+
+        if isinstance(data, dict):
+            return data
+
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    return None
 
 
 # ============================================================
@@ -222,10 +238,10 @@ def _safe_int(value):
 
     try:
         value = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
-    if value < 0:
+    if value < 0 or value > 10_000_000:
         return None
 
     return value
@@ -992,6 +1008,76 @@ FIELD RULES:
 """
 
 
+
+def _extract_provider_objects(output):
+    """
+    Recover complete provider objects independently from the
+    providers array, even if the surrounding JSON is malformed.
+
+    Malformed or incomplete individual objects are skipped.
+    """
+    if not output:
+        return []
+
+    marker = re.search(r'"providers"\s*:\s*\[', output)
+
+    if not marker:
+        return []
+
+    start = marker.end()
+    providers = []
+
+    depth = 0
+    object_start = None
+    in_string = False
+    escaped = False
+
+    for index in range(start, len(output)):
+        char = output[index]
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+            continue
+
+        if char == "{":
+            if depth == 0:
+                object_start = index
+
+            depth += 1
+
+        elif char == "}":
+            if depth > 0:
+                depth -= 1
+
+                if depth == 0 and object_start is not None:
+                    raw_object = output[object_start:index + 1]
+
+                    try:
+                        provider = json.loads(raw_object)
+
+                        if isinstance(provider, dict):
+                            providers.append(provider)
+
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        pass
+
+                    object_start = None
+
+        elif char == "]" and depth == 0:
+            break
+
+    return providers
+
+
 def _request_gemini_provider_batch(client, prompt):
     try:
         response = client.interactions.create(
@@ -1032,78 +1118,120 @@ def _request_gemini_provider_batch(client, prompt):
                 "max_output_tokens": 8192,
             },
         )
+
     except Exception as exc:
         print(
             "[external search] Gemini discovery error: "
             f"{exc!r}",
             flush=True,
         )
-        raise RuntimeError(f"Gemini provider search failed: {exc}") from exc
+        raise RuntimeError(
+            f"Gemini provider search failed: {exc}"
+        ) from exc
 
     raw_output = getattr(response, "output_text", None)
     output = _clean_json_response(raw_output)
 
     if not output:
-        raise ValueError("Gemini returned an empty provider response")
-
-    data = _parse_provider_json(output)
-    if data is None:
-        decoder = json.JSONDecoder()
-        start = output.find("{")
-        detail = "no JSON object found"
-        if start >= 0:
-            try:
-                decoder.raw_decode(output[start:])
-            except json.JSONDecodeError as exc:
-                detail = (
-                    f"JSONDecodeError={exc.msg!r}, "
-                    f"line={exc.lineno}, column={exc.colno}, "
-                    f"position={exc.pos}"
-                )
-        # Do not dump enormous model responses into application logs.
-        preview = output[:300].replace("\\n", " ")
-        tail = output[-160:].replace("\\n", " ") if len(output) > 300 else ""
         raise ValueError(
-            "Gemini returned malformed provider JSON. "
-            f"response_length={len(output)}, {detail}, "
+            "Gemini returned an empty provider response"
+        )
+
+    # First attempt: parse the complete response normally.
+    data = _parse_provider_json(output)
+
+    providers = None
+
+    if isinstance(data, dict):
+        parsed_providers = data.get("providers")
+
+        if isinstance(parsed_providers, list):
+            providers = parsed_providers
+
+    # Second attempt: recover individual complete provider objects.
+    if providers is None:
+        providers = _extract_provider_objects(output)
+
+        print(
+            "[external search] recovered providers individually: "
+            f"{len(providers)}",
+            flush=True,
+        )
+
+    if not providers:
+        preview = output[:300].replace("\n", " ")
+        tail = output[-160:].replace("\n", " ")
+
+        raise ValueError(
+            "Gemini returned malformed provider JSON and no "
+            "complete providers could be recovered. "
+            f"response_length={len(output)}, "
             f"preview={preview!r}, tail={tail!r}"
         )
 
-    if not isinstance(data, dict):
-        raise ValueError("Gemini JSON root must be an object")
-
-    providers = data.get("providers")
-    if not isinstance(providers, list):
-        raise ValueError("Gemini JSON must contain a providers array")
-
-    # Website and source_url are deliberately not accepted in provider JSON.
-    # They are resolved separately inside the backend for email extraction.
     allowed_fields = {
-        "name", "trade", "location", "rating", "review_count",
-        "availability", "phone", "email",
+        "name",
+        "trade",
+        "location",
+        "rating",
+        "review_count",
+        "availability",
+        "phone",
+        "email",
     }
+
     cleaned = []
+    rejected = 0
 
     for provider in providers:
         if not isinstance(provider, dict):
+            rejected += 1
             continue
 
-        # Drop unexpected fields and cap text before downstream processing.
-        item = {key: provider.get(key) for key in allowed_fields if key in provider}
-        for key in ("name", "trade", "location", "availability", "phone", "email"):
+        item = {
+            key: provider.get(key)
+            for key in allowed_fields
+            if key in provider
+        }
+
+        for key in (
+            "name",
+            "trade",
+            "location",
+            "availability",
+            "phone",
+            "email",
+        ):
             value = item.get(key)
+
             if value is not None and not isinstance(value, str):
                 item[key] = None
+
             elif isinstance(value, str):
                 item[key] = value.strip()[:300] or None
 
-        item["rating"] = _safe_float(item.get("rating"))
-        item["review_count"] = _safe_int(item.get("review_count"))
+        item["rating"] = _safe_float(
+            item.get("rating")
+        )
 
-        if item.get("name") and item.get("trade"):
-            cleaned.append(item)
+        item["review_count"] = _safe_int(
+            item.get("review_count")
+        )
+
+        if not item.get("name") or not item.get("trade"):
+            rejected += 1
+            continue
+
+        cleaned.append(item)
+
+    print(
+        "[external search] provider JSON parsing complete: "
+        f"valid={len(cleaned)}, rejected={rejected}",
+        flush=True,
+    )
 
     return cleaned
+
 
 
 def _discover_provider_batch(
