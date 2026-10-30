@@ -271,7 +271,7 @@ def build_external_worker_email(
         </p>
 
         <p>
-            We are contacting you through Matchly about
+            We are contacting you about
             a service request that may match the services
             your business provides.
         </p>
@@ -318,10 +318,7 @@ def build_external_worker_email(
             Thank you for your time.
         </p>
 
-        <p>
-            Kind regards,<br>
-            Matchly
-        </p>
+        
     </div>
     """
 
@@ -482,9 +479,7 @@ def create_maintenance_request():
         checkout_session = stripe.checkout.Session.create(
             mode="payment",
 
-            payment_method_types=[
-                "card"
-            ],
+            
 
             line_items=[
                 {
