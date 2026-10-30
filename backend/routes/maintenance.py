@@ -1,6 +1,6 @@
 import os
 import stripe
-
+import traceback
 from datetime import datetime, timezone
 from html import escape
 
@@ -943,8 +943,16 @@ def search_external_workers_for_request(
             )
         }, 409
 
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
         db.session.rollback()
+
+        print(
+            "[external search] DATABASE SAVE ERROR:",
+            repr(exc),
+            flush=True
+        )
+
+        traceback.print_exc()
 
         return {
             "error": (
