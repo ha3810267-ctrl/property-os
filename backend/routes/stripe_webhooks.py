@@ -111,6 +111,7 @@ def stripe_webhook():
         }, 200
 
     session = event["data"]["object"]
+    session = session.to_dict()
 
     # --------------------------------------------------------
     # Confirm successful payment
