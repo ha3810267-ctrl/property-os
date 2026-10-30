@@ -1,3 +1,4 @@
+
 from backend.database import db
 from datetime import datetime, timezone
 
@@ -46,6 +47,30 @@ class MaintenanceRequest(db.Model):
     category = db.Column(
         db.String(100),
         nullable=True
+    )
+
+    # ========================================================
+    # STRIPE PAYMENT
+    # ========================================================
+
+    payment_status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True
+    )
+
+    stripe_checkout_session_id = db.Column(
+        db.String(255),
+        nullable=True,
+        unique=True
+    )
+
+    stripe_payment_intent_id = db.Column(
+        db.String(255),
+        nullable=True,
+        unique=True
     )
 
     created_at = db.Column(
