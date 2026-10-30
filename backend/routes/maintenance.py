@@ -478,6 +478,7 @@ def create_maintenance_request():
 
         checkout_session = stripe.checkout.Session.create(
             mode="payment",
+            managed_payments={"enabled": False},
 
             
 
