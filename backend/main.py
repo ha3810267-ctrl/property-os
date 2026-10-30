@@ -23,7 +23,7 @@ from backend.routes.contact import (
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
-
+from backend.routes.stripe_webhooks import stripe_webhooks_bp
 from backend.database import db
 
 from backend.models.organisation import Organisation
@@ -113,7 +113,9 @@ app.register_blueprint(
 app.register_blueprint(
     users_bp
 )
-
+app.register_blueprint(
+    stripe_webhooks_bp
+)
 app.register_blueprint(
     auth_bp
 )

@@ -1,3 +1,5 @@
+import os
+import stripe
 
 from datetime import datetime, timezone
 from html import escape
@@ -155,6 +157,8 @@ def maintenance_request_response(
         "property_address": maintenance_request.location,
 
         "location": maintenance_request.location,
+
+        "payment_status": maintenance_request.payment_status,
 
         "external_workers": [
             {
@@ -350,7 +354,7 @@ def build_external_worker_email(
 
 
 # ============================================================
-# CREATE MAINTENANCE REQUEST
+# CREATE MAINTENANCE REQUEST + STRIPE CHECKOUT
 # ============================================================
 
 @maintenance_bp.route(
@@ -422,7 +426,7 @@ def create_maintenance_request():
             )
         }, 404
 
-    location = property_obj.address.strip()
+    location = (property_obj.address or "").strip()
 
     if not location:
         return {
@@ -442,21 +446,91 @@ def create_maintenance_request():
             "error": str(exc)
         }, 422
 
+    stripe_secret_key = os.getenv(
+        "STRIPE_SECRET_KEY"
+    )
+
+    frontend_url = os.getenv(
+        "FRONTEND_URL",
+        "http://localhost:5173"
+    ).rstrip("/")
+
+    if not stripe_secret_key:
+        return {
+            "error": "Payment service is not configured"
+        }, 503
+
     maintenance_request = MaintenanceRequest(
         description=description,
         user_id=user.id,
         property_id=property_obj.id,
         location=location,
         priority=ai_result["priority"],
-        category=ai_result["category"]
-    )
-
-    db.session.add(
-        maintenance_request
+        category=ai_result["category"],
+        payment_status="pending"
     )
 
     try:
+        db.session.add(
+            maintenance_request
+        )
+
         db.session.flush()
+
+        stripe.api_key = stripe_secret_key
+
+        checkout_session = stripe.checkout.Session.create(
+            mode="payment",
+
+            payment_method_types=[
+                "card"
+            ],
+
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "gbp",
+                        "product_data": {
+                            "name": "Matchly service request"
+                        },
+                        "unit_amount": 2500
+                    },
+                    "quantity": 1
+                }
+            ],
+
+            success_url=(
+                f"{frontend_url}/requests"
+                "?payment=success"
+            ),
+
+            cancel_url=(
+                f"{frontend_url}/requests"
+                "?payment=cancelled"
+            ),
+
+            client_reference_id=str(
+                maintenance_request.id
+            ),
+
+            metadata={
+                "maintenance_request_id": str(
+                    maintenance_request.id
+                ),
+                "user_id": str(user.id),
+                "organisation_id": str(
+                    user.organisation_id
+                )
+            },
+
+            idempotency_key=(
+                f"matchly-request-{maintenance_request.id}"
+            )
+        )
+
+        maintenance_request.stripe_checkout_session_id = (
+            checkout_session.id
+        )
 
         create_audit_log(
             user=user,
@@ -466,6 +540,29 @@ def create_maintenance_request():
         )
 
         db.session.commit()
+
+        return {
+            "checkout_url": checkout_session.url,
+
+            "maintenance_request": (
+                maintenance_request_response(
+                    maintenance_request
+                )
+            )
+        }, 201
+
+    except stripe.StripeError as exc:
+        db.session.rollback()
+
+        print(
+            "[Stripe] Checkout creation failed:",
+            repr(exc),
+            flush=True
+        )
+
+        return {
+            "error": "Could not start payment checkout"
+        }, 502
 
     except IntegrityError:
         db.session.rollback()
@@ -485,10 +582,6 @@ def create_maintenance_request():
                 "Maintenance request could not be created"
             )
         }, 500
-
-    return maintenance_request_response(
-        maintenance_request
-    ), 201
 
 
 # ============================================================
@@ -603,6 +696,18 @@ def search_external_workers_for_request(
             )
         }, 404
 
+    # --------------------------------------------------------
+    # PAYMENT CHECK
+    # --------------------------------------------------------
+
+    if maintenance_request.payment_status != "paid":
+        return {
+            "error": (
+                "Payment is required before finding "
+                "service providers"
+            )
+        }, 402
+
     property_obj = db.session.execute(
         select(Property)
         .where(
@@ -619,7 +724,7 @@ def search_external_workers_for_request(
             )
         }, 404
 
-    location = property_obj.address.strip()
+    location = (property_obj.address or "").strip()
 
     if not location:
         return {

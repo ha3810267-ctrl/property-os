@@ -187,58 +187,59 @@ export default function Maintenance() {
   }
 
   async function handleSubmit(event) {
-    event.preventDefault()
-    setFormError("")
+  event.preventDefault()
+  setFormError("")
 
-    if (!propertyId) {
-      setFormError("Please select a property")
-      return
-    }
-
-    if (!description.trim()) {
-      setFormError("Please describe the service you need")
-      return
-    }
-
-    const property = getProperty(Number(propertyId))
-
-    if (!property) {
-      setFormError("Selected property could not be found")
-      return
-    }
-
-    setSaving(true)
-
-    try {
-      const newRequest = await apiRequest(
-        "/maintenance-requests",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            description: description.trim(),
-            property_id: Number(propertyId),
-          }),
-        }
-      )
-
-      setRequests((current) => [
-        newRequest,
-        ...current,
-      ])
-
-      setShowModal(false)
-      setDescription("")
-      setPropertyId("")
-      setFormError("")
-    } catch (error) {
-      console.error(error)
-      setFormError(
-        error.message || "Could not create service request"
-      )
-    } finally {
-      setSaving(false)
-    }
+  if (!propertyId) {
+    setFormError("Please select a property")
+    return
   }
+
+  if (!description.trim()) {
+    setFormError("Please describe the service you need")
+    return
+  }
+
+  const property = getProperty(Number(propertyId))
+
+  if (!property) {
+    setFormError("Selected property could not be found")
+    return
+  }
+
+  setSaving(true)
+
+  try {
+    const result = await apiRequest(
+      "/maintenance-requests",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          description: description.trim(),
+          property_id: Number(propertyId),
+        }),
+      }
+    )
+
+    if (!result?.checkout_url) {
+      throw new Error(
+        "Payment checkout could not be started"
+      )
+    }
+
+    // Redirect to Stripe's hosted checkout page.
+    window.location.assign(result.checkout_url)
+
+  } catch (error) {
+    console.error(error)
+
+    setFormError(
+      error.message || "Could not create service request"
+    )
+
+    setSaving(false)
+  }
+}
 
   async function deleteRequest(request) {
     const confirmed = window.confirm(
