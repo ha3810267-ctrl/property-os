@@ -51,6 +51,11 @@ class ExternalWorkerMessage(db.Model):
         nullable=True,
         index=True
     )
+    reply_token = db.Column(
+    db.String(100),
+    nullable=True,
+    unique=True
+)
 
     in_reply_to = db.Column(
         db.String(255),
