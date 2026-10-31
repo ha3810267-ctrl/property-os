@@ -971,25 +971,31 @@ def search_external_workers_for_request(
 
     for candidate in added_candidates:
 
+        email_result = getattr(
+        candidate,
+        "_email_send_result",
+        None
+    )
+
+        email_error = getattr(
+            candidate,
+            "_email_send_error",
+            None
+        )
+
+        reply_token = getattr(
+            candidate,
+            "_reply_token",
+            None
+        )
+
         email_status = getattr(
             candidate,
             "_email_status",
             None
         )
 
-        email_result = getattr(
-            candidate,
-            "_email_send_result",
-            None
-        )
-
-        email_error = getattr(
-            candidate,
-            "_email_error",
-            None
-        )
-
-        if email_status == "sent":
+        if email_result:
 
             resend_message_id = None
 
@@ -1013,6 +1019,7 @@ def search_external_workers_for_request(
                 maintenance_request_id=(
                     maintenance_request.id
                 ),
+                reply_token=reply_token,
                 candidate_id=candidate.id,
                 direction="outbound",
                 resend_message_id=resend_message_id,
@@ -1063,7 +1070,7 @@ def search_external_workers_for_request(
                 )
             })
 
-        elif email_status == "failed":
+        elif email_status == "failed" or email_error:
 
             email_failed.append({
                 "candidate_id": candidate.id,

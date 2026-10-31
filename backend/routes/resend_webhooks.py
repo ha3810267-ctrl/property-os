@@ -1,6 +1,7 @@
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 import resend
@@ -299,51 +300,95 @@ def inbound_email():
     )
 
     # ========================================================
-    # NORMALISE SENDER ADDRESS
+    # NORMALISE EMAIL ADDRESSES
     # ========================================================
 
-    sender_address = sender_email
+    def normalise_email(address):
 
-    if (
+        if not isinstance(address, str):
+            return None
+
+        address = address.strip()
+
+        if "<" in address and ">" in address:
+            address = (
+                address.split("<", 1)[1]
+                .split(">", 1)[0]
+                .strip()
+            )
+
+        return address.lower() or None
+
+    sender_address = normalise_email(
         sender_email
-        and "<" in sender_email
-        and ">" in sender_email
-    ):
+    )
 
-        sender_address = (
-            sender_email
-            .split("<", 1)[1]
-            .split(">", 1)[0]
-            .strip()
+    # ========================================================
+    # EXTRACT UNIQUE REPLY TOKEN
+    # ========================================================
+
+    reply_token = None
+
+    for recipient in recipient_emails:
+
+        recipient_address = normalise_email(
+            recipient
         )
 
-    if sender_address:
+        if not recipient_address:
+            continue
 
-        sender_address = (
-            sender_address
-            .lower()
-            .strip()
+        match = re.fullmatch(
+            r"replies\+([a-z0-9_-]+)@matchly-app\.com",
+            recipient_address
+        )
+
+        if match:
+            reply_token = match.group(1)
+            break
+
+    # ========================================================
+    # FIND ORIGINAL OUTBOUND MESSAGE
+    # ========================================================
+
+    outbound_message = None
+
+    if reply_token:
+
+        outbound_message = (
+            ExternalWorkerMessage.query
+            .filter_by(
+                reply_token=reply_token,
+                direction="outbound"
+            )
+            .first()
         )
 
     # ========================================================
-    # FIND CONTRACTOR
+    # VALIDATE ORIGINAL CANDIDATE AND SENDER
     # ========================================================
 
     candidate = None
 
-    if sender_address:
+    if outbound_message and sender_address:
 
         candidate = (
             ExternalWorkerCandidate.query
-            .filter(
-                ExternalWorkerCandidate.email
-                == sender_address
-            )
-            .order_by(
-                ExternalWorkerCandidate.created_at.desc()
+            .filter_by(
+                id=outbound_message.candidate_id,
+                maintenance_request_id=(
+                    outbound_message.maintenance_request_id
+                )
             )
             .first()
         )
+
+        if (
+            candidate
+            and normalise_email(candidate.email)
+            != sender_address
+        ):
+            candidate = None
 
     # ========================================================
     # UNMATCHED EMAIL
@@ -393,4 +438,3 @@ def inbound_email():
         ),
         "candidate_id": candidate.id
     }), 200
-

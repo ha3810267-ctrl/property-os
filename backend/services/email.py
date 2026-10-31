@@ -23,14 +23,17 @@ EMAIL_REPLY_TO = os.getenv(
 def send_email(
     to,
     subject,
-    html
+    html,
+    reply_to=None
 ):
     if not RESEND_API_KEY:
         raise RuntimeError(
             "RESEND_API_KEY is not configured"
         )
 
-    if not EMAIL_REPLY_TO:
+    effective_reply_to = reply_to or EMAIL_REPLY_TO
+
+    if not effective_reply_to:
         raise RuntimeError(
             "EMAIL_REPLY_TO is not configured"
         )
@@ -41,6 +44,6 @@ def send_email(
         "from": EMAIL_FROM,
         "to": [to],
         "subject": subject,
-        "reply_to": EMAIL_REPLY_TO,
+        "reply_to": effective_reply_to,
         "html": html
     })

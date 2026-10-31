@@ -1,7 +1,10 @@
+
 import json
 import os
 import re
+import secrets
 import socket
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
 from urllib.parse import urlparse
@@ -11,7 +14,6 @@ from google import genai
 
 from backend.models.external_worker_candidate import ExternalWorkerCandidate
 from backend.services.email import send_email
-import sys
 
 sys.set_int_max_str_digits(100000)
 
@@ -465,8 +467,6 @@ def _normalise_url(url):
     if not hostname or not _is_public_hostname(hostname):
         return None
 
-    # Reject common model-generated URL corruption. These patterns are
-    # not needed for ordinary URLs and should never be fetched.
     path = parsed.path or ""
     if len(path) > 512:
         return None
@@ -729,7 +729,6 @@ Prefer the provider's official domain, not directories or social profiles.
         if value.upper() in {"NONE", "N/A", "UNKNOWN", "NULL"}:
             continue
 
-        # Accept a single URL only; never turn arbitrary prose into a URL.
         url_match = re.search(r"https?://[^\s<>\"']+", value, re.IGNORECASE)
         if not url_match:
             continue
@@ -1008,7 +1007,6 @@ FIELD RULES:
 """
 
 
-
 def _extract_provider_objects(output):
     """
     Recover complete provider objects independently from the
@@ -1137,7 +1135,6 @@ def _request_gemini_provider_batch(client, prompt):
             "Gemini returned an empty provider response"
         )
 
-    # First attempt: parse the complete response normally.
     data = _parse_provider_json(output)
 
     providers = None
@@ -1148,7 +1145,6 @@ def _request_gemini_provider_batch(client, prompt):
         if isinstance(parsed_providers, list):
             providers = parsed_providers
 
-    # Second attempt: recover individual complete provider objects.
     if providers is None:
         providers = _extract_provider_objects(output)
 
@@ -1231,7 +1227,6 @@ def _request_gemini_provider_batch(client, prompt):
     )
 
     return cleaned
-
 
 
 def _discover_provider_batch(
@@ -1368,10 +1363,6 @@ def search_external_workers(
                 if not name or not specialty:
                     continue
 
-                # Do not require exact string equality between the
-                # AI-requested service and the provider's specialty.
-                # Gemini has already been instructed to find
-                # semantically relevant providers.
                 business_key = (
                     re.sub(r"\s+", " ", name.lower()),
                     specialty,
@@ -1386,15 +1377,12 @@ def search_external_workers(
             if not prepared_providers:
                 continue
 
-            # Website lookup is deliberately separate from provider JSON.
-            # Keep resolved URLs only in this in-memory batch for scraping.
             internal_websites = _discover_provider_websites(
                 client=client,
                 providers=prepared_providers,
             )
             for provider, website in zip(prepared_providers, internal_websites):
                 provider["_internal_website"] = website
-                # The verifier reads this private internal key, not a Gemini JSON field.
                 provider["website"] = website
 
             verification_results = (
@@ -1453,8 +1441,15 @@ def search_external_workers(
 
                 email_send_result = None
                 email_send_error = None
+                reply_token = None
 
                 if email_subject and email_html:
+                    reply_token = secrets.token_hex(24)
+
+                    reply_to = (
+                        f"replies+{reply_token}@matchly-app.com"
+                    )
+
                     print(
                         "[provider email] sending: "
                         f"name={name!r}, email={email!r}",
@@ -1466,6 +1461,7 @@ def search_external_workers(
                             to=email,
                             subject=email_subject,
                             html=email_html,
+                            reply_to=reply_to,
                         )
 
                     except Exception as exc:
@@ -1478,8 +1474,6 @@ def search_external_workers(
                             flush=True,
                         )
 
-                        # Preserve existing behaviour: a failed send
-                        # does not become a returned candidate.
                         continue
 
                 external_id = (
@@ -1497,22 +1491,19 @@ def search_external_workers(
                     rating=rating,
                     review_count=review_count,
                     availability=availability,
-                    # Keep the website internal; do not expose it through
-                    # the candidate/API model.
                     website=None,
                     phone=phone,
                     email=email,
                     source_url=None,
                 )
 
-                # These attributes are consumed by the existing
-                # maintenance route when persisting email records.
                 candidate._email_send_result = email_send_result
                 candidate._email_send_error = email_send_error
                 candidate._email_subject = email_subject
                 candidate._email_html = email_html
                 candidate._email_text_body = email_text_body
                 candidate._email_recipient = email
+                candidate._reply_token = reply_token
 
                 candidates.append(candidate)
 
