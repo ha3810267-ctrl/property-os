@@ -1313,44 +1313,7 @@ def search_external_workers(
     candidates = []
     seen_businesses = set()
     seen_emails = set()
-    test_email = "adam.hagras@yahoo.com"
-    test_name = "Matchly Test Provider"
-    test_trade = _extract_trade_names(required_trades)[0] if required_trades else "General Service"
-    test_reply_token = secrets.token_hex(24)
 
-    test_candidate = ExternalWorkerCandidate(
-        maintenance_request_id=maintenance_request_id,
-        provider="matchly_test",
-        external_id=f"matchly-test-{maintenance_request_id}",
-        name=test_name,
-        trade=test_trade,
-        location=location_text,
-        rating=None,
-        review_count=None,
-        availability=None,
-        website=None,
-        phone=None,
-        email=test_email,
-        source_url=None,
-    )
-
-    test_email_result = send_email(
-        to=test_email,
-        subject=email_subject,
-        html=email_html,
-        reply_to=f"replies+{test_reply_token}@matchly-app.com",
-    )
-
-    test_candidate._email_send_result = test_email_result
-    test_candidate._email_send_error = None
-    test_candidate._email_subject = email_subject
-    test_candidate._email_html = email_html
-    test_candidate._email_text_body = email_text_body
-    test_candidate._email_recipient = test_email
-    test_candidate._reply_token = test_reply_token
-
-    candidates.append(test_candidate)
-    seen_emails.add(test_email)
     for tier_index, (tier_name, location_instruction) in enumerate(
         location_tiers
     ):
